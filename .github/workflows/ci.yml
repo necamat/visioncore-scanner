@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      # SkiaSharp renders the digit templates via the platform font manager.
+      # On Linux, guarantee fontconfig + a sans-serif family are present so
+      # template generation (and the recognition tests) is deterministic.
+      # Windows and macOS already ship the required fonts.
+      - name: Install native font dependencies (SkiaSharp on Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1 fonts-liberation fonts-dejavu-core
+
+      - name: Restore
+        run: dotnet restore VisionCore.slnx
+
+      - name: Build
+        run: dotnet build VisionCore.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test VisionCore.Tests/VisionCore.Tests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
+
+  publish:
+    name: Publish (linux-x64)
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish
+        run: |
+          dotnet publish VisionCore.Console/VisionCore.Console.csproj \
+            --configuration Release \
+            --runtime linux-x64 \
+            --self-contained true \
+            --output ./publish \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: visioncore-${{ github.ref_name }}-linux-x64
+          path: ./publish/
+          retention-days: 30

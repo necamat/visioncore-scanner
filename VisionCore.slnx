@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="VisionCore.Application/VisionCore.Application.csproj" />
+  <Project Path="VisionCore.Console/VisionCore.Console.csproj" />
+  <Project Path="VisionCore.Domain/VisionCore.Domain.csproj" />
+  <Project Path="VisionCore.Infrastructure/VisionCore.Infrastructure.csproj" />
+  <Project Path="VisionCore.Tests/VisionCore.Tests.csproj" />
+</Solution>

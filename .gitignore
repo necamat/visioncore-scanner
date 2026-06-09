@@ -1,0 +1,78 @@
+## C# / .NET / Visual Studio
+# Build directories
+**/bin/
+**/obj/
+
+# .NET build artifacts
+**/*.BuildWithSkipAnalyzers
+**/*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.sln.user
+
+# Visual Studio cache
+.vs/
+
+# Rider IDE
+.idea/
+*.DotSettings.user
+_ReSharper*/
+
+# VS Code
+.vscode/
+
+# NuGet
+packages/
+*.nupkg
+*.nupkg.metadata
+.nuget/
+
+# Test Results
+TestResults/
+*.trx
+
+# Logs
+logs/
+*.log
+
+# dotnet CLI telemetry
+.dotnet-cli/
+.dotnet/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# App-specific: local processing folders
+input/
+output/
+
+# Secrets / local overrides
+secrets.json
+appsettings.local.json
+local.settings.json
+
+# Python tooling
+__pycache__/
+*.pyc
+
+# Generated / debug artifacts (must never be committed)
+*.tmp.png
+build-diag.txt
+generated_input/
+
+# Committed PDF fixtures live under TestData/PdfSamples/, but transient
+# generator artifacts there must not be tracked.
+VisionCore.Tests/TestData/PdfSamples/**/*.tmp.png
+VisionCore.Tests/TestData/PdfSamples/generated_input/
+
+# Local git-history scratch
+.git_old_backup/
+SWITCH_GIT_HISTORY.ps1
+
+# Personal learning notes (Serbian) - private, must never be committed
+ucenje/

@@ -1,0 +1,9 @@
+# Treat binary assets verbatim — never apply line-ending (CRLF/LF) normalization.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.bmp   binary
+*.gif   binary
+*.xlsx  binary
+*.xlsm  binary
