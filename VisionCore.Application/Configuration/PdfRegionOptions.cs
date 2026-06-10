@@ -7,7 +7,7 @@ namespace VisionCore.Application.Configuration;
 ///
 /// Bind from appsettings.json section "PdfRegions".
 /// </summary>
-public sealed class PdfRegionOptions
+public sealed record PdfRegionOptions
 {
     /// <summary>DPI used when rendering the PDF page to a bitmap.</summary>
     public int Dpi { get; init; } = 200;
@@ -35,7 +35,7 @@ public sealed class PdfRegionOptions
 }
 
 /// <summary>Pixel rectangle for one form region on a rendered PDF page.</summary>
-public sealed class PdfRegionBounds
+public sealed record PdfRegionBounds
 {
     /// <summary>Left edge in pixels from the left of the rendered page.</summary>
     public int X { get; init; }
