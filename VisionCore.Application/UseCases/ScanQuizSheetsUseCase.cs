@@ -1,21 +1,27 @@
 namespace VisionCore.Application.UseCases;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using VisionCore.Application.Abstractions;
 using VisionCore.Application.Common;
+using VisionCore.Application.Configuration;
 using VisionCore.Application.Mapping;
+using VisionCore.Domain.Entities;
 using VisionCore.Domain.Models;
 
 /// <summary>
 /// Scans every source document supplied by the <see cref="IScanSourceProvider"/>
 /// through the format-appropriate pipeline and collects the per-sheet results
-/// into a <see cref="QuizResult"/>. Resilient per file — a single sheet that
-/// fails is recorded as rejected and the run continues. Exporting the result is
-/// the caller's responsibility.
+/// into a <see cref="QuizResult"/>. Sheets are independent, so they are scanned
+/// concurrently (bounded by <see cref="ProcessingOptions.MaxDegreeOfParallelism"/>)
+/// while the collected results keep the provider's order. Resilient per file —
+/// a single sheet that fails is recorded as rejected and the run continues.
+/// Exporting the result is the caller's responsibility.
 /// </summary>
 public sealed class ScanQuizSheetsUseCase(
     IScanSourceProvider sourceProvider,
     IPipelineFactory pipelineFactory,
+    IOptions<ProcessingOptions> processingOptions,
     ILogger<ScanQuizSheetsUseCase> logger)
 {
     public async Task<Result<QuizResult>> ScanAsync(string root, CancellationToken ct)
@@ -39,18 +45,33 @@ public sealed class ScanQuizSheetsUseCase(
             return Result<QuizResult>.Failure(ex.Message);
         }
 
-        var quizResult = new QuizResult();
-
-        foreach (var source in sources)
+        var results = new SheetScanResult[sources.Count];
+        var parallelOptions = new ParallelOptions
         {
-            ct.ThrowIfCancellationRequested();
-            quizResult.AddScan(await ScanSourceAsync(source, ct));
+            MaxDegreeOfParallelism = EffectiveDegreeOfParallelism,
+            CancellationToken = ct
+        };
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, sources.Count),
+            parallelOptions,
+            async (index, token) => results[index] = await ScanSourceAsync(sources[index], token));
+
+        var quizResult = new QuizResult();
+        foreach (var result in results)
+        {
+            quizResult.AddScan(result);
         }
 
         return Result<QuizResult>.Success(quizResult);
     }
 
-    private async Task<Domain.Entities.SheetScanResult> ScanSourceAsync(ScanSource source, CancellationToken ct)
+    private int EffectiveDegreeOfParallelism =>
+        processingOptions.Value.MaxDegreeOfParallelism > 0
+            ? processingOptions.Value.MaxDegreeOfParallelism
+            : Environment.ProcessorCount;
+
+    private async Task<SheetScanResult> ScanSourceAsync(ScanSource source, CancellationToken ct)
     {
         logger.LogInformation("Processing {File}", source.SourcePath);
 

@@ -1,7 +1,9 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using VisionCore.Application.Abstractions;
+using VisionCore.Application.Configuration;
 using VisionCore.Application.Imaging;
 using VisionCore.Application.UseCases;
 using VisionCore.Domain.Imaging.Evaluation;
@@ -21,11 +23,15 @@ public sealed class ScanQuizSheetsUseCaseTests : IDisposable
         root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
-        sut = new ScanQuizSheetsUseCase(
+        sut = CreateUseCase(new ProcessingOptions());
+    }
+
+    private ScanQuizSheetsUseCase CreateUseCase(ProcessingOptions options) =>
+        new(
             sourceProviderMock.Object,
             pipelineFactoryMock.Object,
+            Options.Create(options),
             NullLogger<ScanQuizSheetsUseCase>.Instance);
-    }
 
     public void Dispose() => Directory.Delete(root, true);
 
@@ -97,6 +103,79 @@ public sealed class ScanQuizSheetsUseCaseTests : IDisposable
 
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Contain("disk error");
+    }
+
+    [Fact]
+    public async Task ScanAsync_Should_Keep_Results_In_Provider_Order_When_Scanning_Concurrently()
+    {
+        // Earlier sources finish later: if results were collected by completion
+        // order instead of provider order, the rounds below would come back
+        // reversed.
+        var sources = Enumerable.Range(1, 6)
+            .Select(round => new ScanSource(round, $"R{round}/sheet.pdf"))
+            .ToArray();
+        SetupSources(sources);
+        for (var index = 0; index < sources.Length; index++)
+        {
+            SetupDelayedPipelineFor(sources[index].SourcePath, delay: TimeSpan.FromMilliseconds((6 - index) * 25));
+        }
+
+        var result = await sut.ScanAsync(root, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.GetScans().Select(scan => scan.Round).Should().Equal(1, 2, 3, 4, 5, 6);
+    }
+
+    [Fact]
+    public async Task ScanAsync_Should_Process_Sequentially_When_Parallelism_Is_Limited_To_One()
+    {
+        var limitedSut = CreateUseCase(new ProcessingOptions { MaxDegreeOfParallelism = 1 });
+        var concurrent = 0;
+        var maxObservedConcurrency = 0;
+        var sources = Enumerable.Range(1, 4)
+            .Select(round => new ScanSource(round, $"R{round}/sheet.pdf"))
+            .ToArray();
+        SetupSources(sources);
+        foreach (var source in sources)
+        {
+            var pipeline = new Mock<IImageProcessingPipeline>();
+            pipeline.Setup(p => p.ProcessAsync(source.SourcePath, It.IsAny<CancellationToken>()))
+                .Returns(async (string _, CancellationToken token) =>
+                {
+                    var now = Interlocked.Increment(ref concurrent);
+                    InterlockedExtensionsMax(ref maxObservedConcurrency, now);
+                    await Task.Delay(TimeSpan.FromMilliseconds(20), token);
+                    Interlocked.Decrement(ref concurrent);
+                    return BuildResult(success: true);
+                });
+            pipelineFactoryMock.Setup(f => f.CreateForSource(source.SourcePath)).Returns(pipeline.Object);
+        }
+
+        var result = await limitedSut.ScanAsync(root, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        maxObservedConcurrency.Should().Be(1, "MaxDegreeOfParallelism = 1 must serialize the scans");
+    }
+
+    private static void InterlockedExtensionsMax(ref int target, int candidate)
+    {
+        int current;
+        while (candidate > (current = Volatile.Read(ref target)) &&
+               Interlocked.CompareExchange(ref target, candidate, current) != current)
+        {
+        }
+    }
+
+    private void SetupDelayedPipelineFor(string path, TimeSpan delay)
+    {
+        var pipeline = new Mock<IImageProcessingPipeline>();
+        pipeline.Setup(p => p.ProcessAsync(path, It.IsAny<CancellationToken>()))
+            .Returns(async (string _, CancellationToken token) =>
+            {
+                await Task.Delay(delay, token);
+                return BuildResult(success: true);
+            });
+        pipelineFactoryMock.Setup(f => f.CreateForSource(path)).Returns(pipeline.Object);
     }
 
     private void SetupSources(params ScanSource[] sources) =>

@@ -1,5 +1,7 @@
 namespace VisionCore.Application.Configuration;
 
+using System.ComponentModel.DataAnnotations;
+
 /// <summary>
 /// Console run settings (input location and Excel output) bound from the
 /// "ProcessingOptions" configuration section.
@@ -14,4 +16,12 @@ public sealed class ProcessingOptions
 
     /// <summary>File name of the generated Excel report.</summary>
     public string OutputFileName { get; init; } = "rezultati.xlsx";
+
+    /// <summary>
+    /// Maximum number of sheets scanned concurrently. Sheets are independent
+    /// and the recognizers are stateless, so this scales with cores;
+    /// 0 (the default) means one worker per processor core.
+    /// </summary>
+    [Range(0, 64)]
+    public int MaxDegreeOfParallelism { get; init; }
 }
