@@ -34,8 +34,7 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
     {
         ct.ThrowIfCancellationRequested();
 
-        if (ScoreRegions.Any(region => !regions.Regions.Any(item => item.Region == region)) &&
-            !regions.Regions.Any(item => item.Region == FormRegion.Score))
+        if (!ScoreRegions.All(regions.Contains) && !regions.Contains(FormRegion.Score))
         {
             return Task.FromResult(Failure(RecognitionFailureCode.MissingRegion, null, 0f));
         }
@@ -61,7 +60,7 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
 
     private NumberRecognitionResult? TryRecognizeFromDigitRegions(CroppedFormRegions regions, CancellationToken ct)
     {
-        if (ScoreRegions.Any(region => !regions.Regions.Any(item => item.Region == region)))
+        if (!ScoreRegions.All(regions.Contains))
         {
             return null;
         }
@@ -81,7 +80,7 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
 
     private NumberRecognitionResult? TryRecognizeFromContainer(CroppedFormRegions regions, CancellationToken ct)
     {
-        if (!regions.Regions.Any(item => item.Region == FormRegion.Score))
+        if (!regions.Contains(FormRegion.Score))
         {
             return null;
         }
@@ -157,17 +156,5 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
         return first.Confidence >= second.Confidence
             ? first
             : second;
-    }
-
-    private static GrayImage CropInset(GrayImage source, float insetPercent)
-    {
-        var insetX = Math.Max(1, (int)Math.Round(source.Width * insetPercent));
-        var insetY = Math.Max(1, (int)Math.Round(source.Height * insetPercent));
-        var left = Math.Clamp(insetX, 0, source.Width - 2);
-        var top = Math.Clamp(insetY, 0, source.Height - 2);
-        var right = Math.Clamp(source.Width - insetX, left + 1, source.Width);
-        var bottom = Math.Clamp(source.Height - insetY, top + 1, source.Height);
-        var bounds = Rectangle.FromLTRB(left, top, right, bottom);
-        return source.Crop(bounds);
     }
 }

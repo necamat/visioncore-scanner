@@ -48,8 +48,8 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         ct.ThrowIfCancellationRequested();
 
-        var hasTeamIdContainer = regions.Regions.Any(region => region.Region == FormRegion.TeamId);
-        var hasDigitRegions = TeamIdRegions.All(region => regions.Regions.Any(item => item.Region == region));
+        var hasTeamIdContainer = regions.Contains(FormRegion.TeamId);
+        var hasDigitRegions = TeamIdRegions.All(regions.Contains);
 
         if (!hasTeamIdContainer && !hasDigitRegions)
         {
@@ -275,18 +275,6 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
         }
 
         return runs;
-    }
-
-    private static GrayImage CropInset(GrayImage source, float insetPercent)
-    {
-        var insetX = Math.Max(1, (int)Math.Round(source.Width * insetPercent));
-        var insetY = Math.Max(1, (int)Math.Round(source.Height * insetPercent));
-        var left = Math.Clamp(insetX, 0, source.Width - 2);
-        var top = Math.Clamp(insetY, 0, source.Height - 2);
-        var right = Math.Clamp(source.Width - insetX, left + 1, source.Width);
-        var bottom = Math.Clamp(source.Height - insetY, top + 1, source.Height);
-        var bounds = Rectangle.FromLTRB(left, top, right, bottom);
-        return source.Crop(bounds);
     }
 
     private static IReadOnlyDictionary<int, bool[,]> BuildBoxTemplates(DigitRecognitionOptions options) =>

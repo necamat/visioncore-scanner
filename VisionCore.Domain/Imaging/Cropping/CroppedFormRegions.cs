@@ -2,11 +2,19 @@ namespace VisionCore.Domain.Imaging.Cropping;
 
 using VisionCore.Domain.Imaging.Layout;
 
-public sealed class CroppedFormRegions(IReadOnlyCollection<CroppedRegion> regions)
+public sealed class CroppedFormRegions
 {
-    private readonly IReadOnlyDictionary<FormRegion, CroppedRegion> _regions = BuildRegionMap(regions);
+    private readonly IReadOnlyDictionary<FormRegion, CroppedRegion> _regions;
 
-    public IReadOnlyCollection<CroppedRegion> Regions => _regions.Values.ToList().AsReadOnly();
+    public CroppedFormRegions(IReadOnlyCollection<CroppedRegion> regions)
+    {
+        _regions = BuildRegionMap(regions);
+        Regions = _regions.Values.ToList().AsReadOnly();
+    }
+
+    public IReadOnlyCollection<CroppedRegion> Regions { get; }
+
+    public bool Contains(FormRegion region) => _regions.ContainsKey(region);
 
     public CroppedRegion GetRegion(FormRegion region)
     {
