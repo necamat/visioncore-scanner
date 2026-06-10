@@ -19,6 +19,16 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     private const int BoxTemplateWidth = 64;
     private const int BoxTemplateHeight = 112;
 
+    // Shape heuristics are educated guesses, not template evidence, so their
+    // confidence is capped below the accepted threshold (see
+    // ConfidenceEvaluationOptions): a heuristic read must always land in the
+    // needs-review band and reach a human, never auto-accept. The tiers
+    // preserve the relative strength of the rules so best-candidate selection
+    // still prefers the stronger rule.
+    private const float StrongHeuristicConfidence = 0.75f;
+    private const float ModerateHeuristicConfidence = 0.73f;
+    private const float WeakHeuristicConfidence = 0.71f;
+
     private static readonly FormRegion[] TeamIdRegions =
     [
         FormRegion.TeamIdDigit1,
@@ -156,8 +166,8 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
         return runCount switch
         {
-            >= 2 => new RecognizedDigit(region, 0, 0.998f),
-            1 => new RecognizedDigit(region, 1, 0.970f),
+            >= 2 => new RecognizedDigit(region, 0, StrongHeuristicConfidence),
+            1 => new RecognizedDigit(region, 1, WeakHeuristicConfidence),
             _ => null
         };
     }
@@ -186,9 +196,9 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     /// <summary>
     /// Shape-based fallback that disambiguates the hardest printed cases (0 vs 1)
     /// when template matching is weak. The thresholds (aspect-ratio bands, hole
-    /// count, centre-band ink ratio, dark-run count) and the high confidences are
-    /// empirical tuning values for the 200-DPI form, not general constants — hence
-    /// they are inlined here rather than surfaced as configuration.
+    /// count, centre-band ink ratio, dark-run count) are empirical tuning values
+    /// for the 200-DPI form, not general constants — hence they are inlined here
+    /// rather than surfaced as configuration.
     /// </summary>
     private RecognizedDigit? TryRecognizePrintedDigitHeuristically(GrayImage prepared, FormRegion region)
     {
@@ -207,19 +217,19 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
         if (middleBandRunCount >= 2 && aspectRatio <= 0.20f)
         {
-            return new RecognizedDigit(region, 0, 0.995f);
+            return new RecognizedDigit(region, 0, StrongHeuristicConfidence);
         }
 
         if ((holeCount == 1 || centerBandInkRatio <= 0.08f) &&
             aspectRatio >= 0.20f &&
             aspectRatio <= 0.45f)
         {
-            return new RecognizedDigit(region, 0, 0.985f);
+            return new RecognizedDigit(region, 0, ModerateHeuristicConfidence);
         }
 
         if (aspectRatio <= 0.32f && holeCount == 0 && centerBandInkRatio >= 0.14f && middleBandRunCount == 1)
         {
-            return new RecognizedDigit(region, 1, 0.995f);
+            return new RecognizedDigit(region, 1, StrongHeuristicConfidence);
         }
 
         return null;

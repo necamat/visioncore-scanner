@@ -9,7 +9,9 @@ using VisionCore.Domain.Imaging.Evaluation;
 /// <summary>
 /// Turns the digit-recognition result into a final review decision
 /// (accepted / needs-review / rejected) by applying the configured confidence
-/// thresholds.
+/// thresholds. The decision gates on the weakest digit rather than the average:
+/// one uncertain digit changes the whole number, so an otherwise strong sheet
+/// must not absorb a low-confidence read into an auto-accept.
 /// </summary>
 public sealed class PdfConfidenceEvaluationStep(ConfidenceEvaluationOptions options) : IImageProcessingStep
 {
@@ -38,11 +40,17 @@ public sealed class PdfConfidenceEvaluationStep(ConfidenceEvaluationOptions opti
         var score = recognition.Score.Value;
         var confidence = recognition.GlobalConfidence;
 
-        context.FinalScanResult = confidence switch
+        // The reported confidence stays the global aggregate; only the gate
+        // uses the weakest digit.
+        var weakestDigitConfidence = recognition.TeamId.Digits
+            .Concat(recognition.Score.Digits)
+            .Min(digit => digit.Confidence);
+
+        context.FinalScanResult = weakestDigitConfidence switch
         {
-            _ when confidence >= options.MinimumAcceptedConfidence =>
+            _ when weakestDigitConfidence >= options.MinimumAcceptedConfidence =>
                 FinalScanResult.Accepted(teamId, score, confidence),
-            _ when confidence >= options.MinimumReviewConfidence =>
+            _ when weakestDigitConfidence >= options.MinimumReviewConfidence =>
                 FinalScanResult.NeedsReview(teamId, score, confidence),
             _ => FinalScanResult.Rejected(EvaluationFailureCode.LowConfidence, teamId, score, confidence)
         };
