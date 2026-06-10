@@ -39,6 +39,9 @@ jobs:
       - name: Build
         run: dotnet build VisionCore.slnx --no-restore --configuration Release
 
+      - name: Verify formatting
+        run: dotnet format VisionCore.slnx --verify-no-changes --no-restore
+
       - name: Test
         run: dotnet test VisionCore.Tests/VisionCore.Tests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
 

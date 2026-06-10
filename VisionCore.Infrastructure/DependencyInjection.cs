@@ -2,8 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using VisionCore.Application.Abstractions;
 using VisionCore.Infrastructure.Factories;
 using VisionCore.Infrastructure.Implementations;
-using VisionCore.Infrastructure.Implementations.Recognition;
 using VisionCore.Infrastructure.Implementations.Pdf;
+using VisionCore.Infrastructure.Implementations.Recognition;
 
 namespace VisionCore.Infrastructure;
 

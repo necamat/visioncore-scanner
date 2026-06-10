@@ -136,13 +136,13 @@ public sealed class PdfRegionExtractor(IOptions<PdfRegionOptions> options) : IRe
     private Dictionary<FormRegion, PdfRegionBounds> BuildRegionMap() =>
         new()
         {
-            [FormRegion.TeamId]       = _options.TeamId,
+            [FormRegion.TeamId] = _options.TeamId,
             [FormRegion.TeamIdDigit1] = _options.TeamIdDigit1,
             [FormRegion.TeamIdDigit2] = _options.TeamIdDigit2,
-            [FormRegion.Score]        = _options.Score,
-            [FormRegion.ScoreDigit1]  = _options.ScoreDigit1,
-            [FormRegion.ScoreDigit2]  = _options.ScoreDigit2,
-            [FormRegion.ScoreDigit3]  = _options.ScoreDigit3,
+            [FormRegion.Score] = _options.Score,
+            [FormRegion.ScoreDigit1] = _options.ScoreDigit1,
+            [FormRegion.ScoreDigit2] = _options.ScoreDigit2,
+            [FormRegion.ScoreDigit3] = _options.ScoreDigit3,
         };
 
     private static Rectangle ClampToPage(Rectangle rect, int pageWidth, int pageHeight)

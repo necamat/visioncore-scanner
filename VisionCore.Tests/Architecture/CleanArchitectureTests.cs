@@ -1,8 +1,8 @@
 using System.Linq;
 using FluentAssertions;
 using NetArchTest.Rules;
-using VisionCore.Domain;
 using VisionCore.Application;
+using VisionCore.Domain;
 using VisionCore.Infrastructure;
 using Xunit;
 

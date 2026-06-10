@@ -1,7 +1,7 @@
 namespace VisionCore.Infrastructure.Implementations.Recognition;
 
-using Microsoft.Extensions.Options;
 using System.Drawing;
+using Microsoft.Extensions.Options;
 using VisionCore.Application.Abstractions;
 using VisionCore.Application.Configuration;
 using VisionCore.Domain.Imaging.Cropping;
