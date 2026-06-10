@@ -76,23 +76,13 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
     private IReadOnlyList<RecognizedDigit?> ReadDigitsFromContainer(CroppedRegion region, CancellationToken ct)
     {
-        using var bitmap = Load(region);
+        var bitmap = Load(region);
         var extractedBoxes = ExtractBoxContents(bitmap, expectedRuns: 2);
         if (extractedBoxes.Count == 2)
         {
-            try
-            {
-                return extractedBoxes
-                    .Select((box, index) => RecognizePrintedDigit(box, TeamIdRegions[index], ct))
-                    .ToList();
-            }
-            finally
-            {
-                foreach (var box in extractedBoxes)
-                {
-                    box.Dispose();
-                }
-            }
+            return extractedBoxes
+                .Select((box, index) => RecognizePrintedDigit(box, TeamIdRegions[index], ct))
+                .ToList();
         }
 
         if (bitmap.Width > bitmap.Height * 1.35f)
@@ -112,7 +102,7 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         ct.ThrowIfCancellationRequested();
 
-        using var bitmap = Load(region);
+        var bitmap = Load(region);
         return RecognizePrintedDigit(bitmap, region.Region, ct);
     }
 
@@ -124,8 +114,8 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
         foreach (var insetPercent in new[] { 0.12f, 0.16f, 0.20f, 0.24f, 0.28f })
         {
-            using var candidate = CropInset(source, insetPercent);
-            using var prepared = PrepareForRecognition(candidate);
+            var candidate = CropInset(source, insetPercent);
+            var prepared = PrepareForRecognition(candidate);
 
             // Template matching is authoritative when it clears the match
             // threshold; the shape heuristic only disambiguates 0/1 when the
@@ -296,7 +286,7 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         // A boxed-digit template: the digit glyph centered inside a thin border,
         // matching how a single printed digit looks inside its form box.
-        using var glyph = GlyphRenderer.RenderDigit(
+        var glyph = GlyphRenderer.RenderDigit(
             digit, BoxTemplateWidth, BoxTemplateHeight, BoxTemplateHeight * 0.58f,
             GlyphRenderer.TemplateTypefaces[0]);
 
@@ -319,7 +309,7 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
     private static bool[,] NormalizeFullRegion(GrayImage source, DigitRecognitionOptions options)
     {
-        using var normalized = source.Resize(BoxTemplateWidth, BoxTemplateHeight);
+        var normalized = source.Resize(BoxTemplateWidth, BoxTemplateHeight);
 
         var pixels = new bool[BoxTemplateWidth, BoxTemplateHeight];
         for (var x = 0; x < BoxTemplateWidth; x++)

@@ -46,10 +46,10 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
             var containerResult = TryRecognizeFromContainer(regions, ct);
             var bestResult = ChooseBetter(directResult, containerResult);
 
-        if (bestResult is null)
-        {
-            return Task.FromResult(Failure(RecognitionFailureCode.InvalidDigit, null, 0f));
-        }
+            if (bestResult is null)
+            {
+                return Task.FromResult(Failure(RecognitionFailureCode.InvalidDigit, null, 0f));
+            }
 
             return Task.FromResult(bestResult);
         }
@@ -86,44 +86,34 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
             return null;
         }
 
-        using var bitmap = Load(regions.GetRegion(FormRegion.Score));
+        var bitmap = Load(regions.GetRegion(FormRegion.Score));
         var boxes = ExtractBoxContents(bitmap, expectedRuns: 3);
         if (boxes.Count != 3)
         {
             return null;
         }
 
-        try
-        {
-            var digits = boxes
-                .Select((box, index) =>
-                {
-                    ct.ThrowIfCancellationRequested();
-                    return RecognizeFromBitmap(box, ScoreRegions[index]);
-                })
-                .ToList();
-
-            if (digits.Any(digit => digit is null))
+        var digits = boxes
+            .Select((box, index) =>
             {
-                return null;
-            }
+                ct.ThrowIfCancellationRequested();
+                return RecognizeFromBitmap(box, ScoreRegions[index]);
+            })
+            .ToList();
 
-            var number = new RecognizedNumber(digits.Select(digit => digit!).ToList());
-            return NumberRecognitionResult.Success(number);
-        }
-        finally
+        if (digits.Any(digit => digit is null))
         {
-            foreach (var box in boxes)
-            {
-                box.Dispose();
-            }
+            return null;
         }
+
+        var number = new RecognizedNumber(digits.Select(digit => digit!).ToList());
+        return NumberRecognitionResult.Success(number);
     }
 
     private RecognizedDigit? RecognizeScoreDigit(CroppedRegion region, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        using var bitmap = Load(region);
+        var bitmap = Load(region);
         return RecognizeFromBitmap(bitmap, region.Region);
     }
 
@@ -133,8 +123,8 @@ public sealed class TemplateMatchingScoreRecognizer(DigitRecognitionOptions opti
 
         foreach (var inset in new[] { 0.08f, 0.12f, 0.16f, 0.20f })
         {
-            using var candidate = CropInset(source, inset);
-            using var prepared = PrepareForRecognition(candidate);
+            var candidate = CropInset(source, inset);
+            var prepared = PrepareForRecognition(candidate);
             var recognized = RecognizeGlyph(prepared, region);
             if (recognized is null)
             {

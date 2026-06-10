@@ -26,31 +26,21 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
 
     protected IReadOnlyList<RecognizedDigit> RecognizeMultipleDigits(CroppedRegion region, CancellationToken ct)
     {
-        using var bitmap = Load(region);
-        using var prepared = PrepareForRecognition(bitmap);
+        var bitmap = Load(region);
+        var prepared = PrepareForRecognition(bitmap);
         var segments = SegmentDigits(prepared);
         var digits = new List<RecognizedDigit>();
 
-        try
+        foreach (var segment in segments)
         {
-            foreach (var segment in segments)
+            ct.ThrowIfCancellationRequested();
+            var recognized = RecognizeGlyph(segment, region.Region);
+            if (recognized is null)
             {
-                ct.ThrowIfCancellationRequested();
-                var recognized = RecognizeGlyph(segment, region.Region);
-                if (recognized is null)
-                {
-                    throw new InvalidOperationException("Digit segment could not be recognized.");
-                }
+                throw new InvalidOperationException("Digit segment could not be recognized.");
+            }
 
-                digits.Add(recognized);
-            }
-        }
-        finally
-        {
-            foreach (var segment in segments)
-            {
-                segment.Dispose();
-            }
+            digits.Add(recognized);
         }
 
         return digits;
@@ -60,14 +50,14 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
     {
         ct.ThrowIfCancellationRequested();
 
-        using var bitmap = Load(region);
-        using var prepared = PrepareForRecognition(bitmap);
+        var bitmap = Load(region);
+        var prepared = PrepareForRecognition(bitmap);
         return RecognizeGlyph(prepared, region.Region);
     }
 
     protected List<GrayImage> ExtractBoxContents(GrayImage source, int expectedRuns)
     {
-        using var prepared = PrepareForRecognition(source);
+        var prepared = PrepareForRecognition(source);
         var bestRuns = FindBestHorizontalRuns(prepared, expectedRuns);
         if (bestRuns.Count != expectedRuns)
         {
@@ -391,7 +381,7 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
 
     private static bool[,] BuildTemplate(int digit, SKTypeface typeface, DigitRecognitionOptions options)
     {
-        using var glyph = GlyphRenderer.RenderDigit(
+        var glyph = GlyphRenderer.RenderDigit(
             digit, options.TemplateWidth, options.TemplateHeight, options.TemplateHeight * 0.70f, typeface);
 
         return NormalizeGlyph(glyph, options)
@@ -408,8 +398,8 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
             return null;
         }
 
-        using var cropped = source.Crop(bounds.Value);
-        using var normalized = cropped.Resize(options.TemplateWidth, options.TemplateHeight);
+        var cropped = source.Crop(bounds.Value);
+        var normalized = cropped.Resize(options.TemplateWidth, options.TemplateHeight);
 
         var pixels = new bool[options.TemplateWidth, options.TemplateHeight];
         for (var x = 0; x < options.TemplateWidth; x++)

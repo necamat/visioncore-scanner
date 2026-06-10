@@ -77,10 +77,7 @@ public sealed class PdfRegionExtractor(IOptions<PdfRegionOptions> options) : IRe
                 "Could not decode any embedded image from PDF page 1.");
         }
 
-        using (pageImage)
-        {
-            return CropRegions(pageImage);
-        }
+        return CropRegions(pageImage);
     }
 
     private static GrayImage? TryLoadImage(UglyToad.PdfPig.Content.IPdfImage pdfImage)
@@ -123,7 +120,7 @@ public sealed class PdfRegionExtractor(IOptions<PdfRegionOptions> options) : IRe
             // Clamp to page dimensions to avoid an out-of-bounds crop.
             rect = ClampToPage(rect, page.Width, page.Height);
 
-            using var cropped = page.Crop(rect);
+            var cropped = page.Crop(rect);
 
             croppedRegions.Add(new CroppedRegion(
                 region,
