@@ -24,4 +24,11 @@ public sealed class ProcessingOptions
     /// </summary>
     [Range(0, 64)]
     public int MaxDegreeOfParallelism { get; init; }
+
+    /// <summary>
+    /// When enabled (the default), rounds whose files have not changed since
+    /// the previous run reuse their persisted results instead of being
+    /// scanned again. Disable to force a full re-scan.
+    /// </summary>
+    public bool ReuseUnchangedRounds { get; init; } = true;
 }

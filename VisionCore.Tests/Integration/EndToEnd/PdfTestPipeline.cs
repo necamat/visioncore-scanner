@@ -39,6 +39,7 @@ internal static class PdfTestPipeline
         return new ScanQuizSheetsUseCase(
             sourceProvider,
             CreateFactory(regions),
+            new JsonProcessingStateRepository(NullLogger<JsonProcessingStateRepository>.Instance),
             Options.Create(new ProcessingOptions()),
             NullLogger<ScanQuizSheetsUseCase>.Instance);
     }

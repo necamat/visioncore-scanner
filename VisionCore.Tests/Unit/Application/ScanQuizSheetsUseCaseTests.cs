@@ -6,6 +6,7 @@ using VisionCore.Application.Abstractions;
 using VisionCore.Application.Configuration;
 using VisionCore.Application.Imaging;
 using VisionCore.Application.UseCases;
+using VisionCore.Domain.Entities;
 using VisionCore.Domain.Imaging.Evaluation;
 using Xunit;
 
@@ -16,12 +17,17 @@ public sealed class ScanQuizSheetsUseCaseTests : IDisposable
     private readonly string root;
     private readonly Mock<IScanSourceProvider> sourceProviderMock = new();
     private readonly Mock<IPipelineFactory> pipelineFactoryMock = new();
+    private readonly Mock<IProcessingStateRepository> stateRepositoryMock = new();
     private readonly ScanQuizSheetsUseCase sut;
 
     public ScanQuizSheetsUseCaseTests()
     {
         root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+
+        stateRepositoryMock
+            .Setup(r => r.LoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, RoundProcessingState>());
 
         sut = CreateUseCase(new ProcessingOptions());
     }
@@ -30,6 +36,7 @@ public sealed class ScanQuizSheetsUseCaseTests : IDisposable
         new(
             sourceProviderMock.Object,
             pipelineFactoryMock.Object,
+            stateRepositoryMock.Object,
             Options.Create(options),
             NullLogger<ScanQuizSheetsUseCase>.Instance);
 
@@ -156,6 +163,98 @@ public sealed class ScanQuizSheetsUseCaseTests : IDisposable
         result.IsSuccess.Should().BeTrue();
         maxObservedConcurrency.Should().Be(1, "MaxDegreeOfParallelism = 1 must serialize the scans");
     }
+
+    [Fact]
+    public async Task ScanAsync_Should_Reuse_Persisted_Results_For_An_Unchanged_Round()
+    {
+        var source = CreateRealSource(round: 1, "R1", "a.pdf");
+        SetupSources(source);
+        var cachedScan = new SheetScanResult(1, source.SourcePath, 7, 120, 0.95, ReviewStatus.Accepted, null);
+        SetupPersistedState(new RoundProcessingState(1, [FingerprintOf(source)], [cachedScan]));
+
+        var result = await sut.ScanAsync(root, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.GetScans().Should().ContainSingle().Which.Should().Be(cachedScan);
+        pipelineFactoryMock.Verify(
+            f => f.CreateForSource(It.IsAny<string>()), Times.Never,
+            "an unchanged round must not be scanned again");
+    }
+
+    [Fact]
+    public async Task ScanAsync_Should_Rescan_A_Round_Whose_Files_Changed()
+    {
+        var source = CreateRealSource(round: 1, "R1", "a.pdf");
+        SetupSources(source);
+        var staleFingerprint = FingerprintOf(source) with { FileSizeBytes = 12345 };
+        var cachedScan = new SheetScanResult(1, source.SourcePath, 7, 120, 0.95, ReviewStatus.Accepted, null);
+        SetupPersistedState(new RoundProcessingState(1, [staleFingerprint], [cachedScan]));
+        SetupPipelineFor(source.SourcePath, success: true);
+
+        var result = await sut.ScanAsync(root, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        pipelineFactoryMock.Verify(f => f.CreateForSource(source.SourcePath), Times.Once);
+    }
+
+    [Fact]
+    public async Task ScanAsync_Should_Ignore_Persisted_State_When_Reuse_Is_Disabled()
+    {
+        var forcedSut = CreateUseCase(new ProcessingOptions { ReuseUnchangedRounds = false });
+        var source = CreateRealSource(round: 1, "R1", "a.pdf");
+        SetupSources(source);
+        SetupPipelineFor(source.SourcePath, success: true);
+
+        var result = await forcedSut.ScanAsync(root, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        stateRepositoryMock.Verify(
+            r => r.LoadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        pipelineFactoryMock.Verify(f => f.CreateForSource(source.SourcePath), Times.Once);
+    }
+
+    [Fact]
+    public async Task ScanAsync_Should_Persist_The_State_Of_Every_Round()
+    {
+        var first = CreateRealSource(round: 1, "R1", "a.pdf");
+        var second = CreateRealSource(round: 2, "R2", "b.pdf");
+        SetupSources(first, second);
+        SetupPipelineFor(first.SourcePath, success: true);
+        SetupPipelineFor(second.SourcePath, success: true);
+
+        await sut.ScanAsync(root, CancellationToken.None);
+
+        stateRepositoryMock.Verify(
+            r => r.SaveAsync(
+                root,
+                It.Is<IReadOnlyCollection<RoundProcessingState>>(states =>
+                    states.Count == 2 &&
+                    states.Any(state => state.Round == 1) &&
+                    states.Any(state => state.Round == 2)),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private ScanSource CreateRealSource(int round, string roundFolder, string fileName)
+    {
+        var folder = Path.Combine(root, roundFolder);
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, fileName);
+        File.WriteAllText(path, "test-pdf-content");
+        return new ScanSource(round, path);
+    }
+
+    private SourceFingerprint FingerprintOf(ScanSource source)
+    {
+        var info = new FileInfo(source.SourcePath);
+        return new SourceFingerprint(
+            Path.GetRelativePath(root, source.SourcePath), info.Length, info.LastWriteTimeUtc);
+    }
+
+    private void SetupPersistedState(params RoundProcessingState[] states) =>
+        stateRepositoryMock
+            .Setup(r => r.LoadAsync(root, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(states.ToDictionary(state => state.Round));
 
     private static void InterlockedExtensionsMax(ref int target, int candidate)
     {

@@ -33,6 +33,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IPipelineFactory, PipelineFactory>();
         services.AddSingleton<IExcelExporter, ClosedXmlExcelExporter>();
+        services.AddSingleton<IProcessingStateRepository, JsonProcessingStateRepository>();
 
         return services;
     }
