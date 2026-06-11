@@ -14,11 +14,13 @@ using VisionCore.Domain.Models;
 /// through the format-appropriate pipeline and collects the per-sheet results
 /// into a <see cref="QuizResult"/>. Rounds whose files are unchanged since the
 /// previous run reuse their persisted results (see
-/// <see cref="IProcessingStateRepository"/>); the rest are scanned concurrently
-/// (bounded by <see cref="ProcessingOptions.MaxDegreeOfParallelism"/>) while the
-/// collected results keep the provider's order. Resilient per file — a single
-/// sheet that fails is recorded as rejected and the run continues. Exporting
-/// the result is the caller's responsibility.
+/// <see cref="IProcessingStateRepository"/>); everything else is scanned in one
+/// parallel pass that spans all rounds — the degree of parallelism (bounded by
+/// <see cref="ProcessingOptions.MaxDegreeOfParallelism"/>) is not limited by
+/// how the files are split into rounds — while the collected results keep the
+/// provider's order. Resilient per file — a single sheet that fails is
+/// recorded as rejected and the run continues. Exporting the result is the
+/// caller's responsibility.
 /// </summary>
 public sealed class ScanQuizSheetsUseCase(
     IScanSourceProvider sourceProvider,
@@ -51,23 +53,55 @@ public sealed class ScanQuizSheetsUseCase(
         var rounds = GroupByRoundPreservingOrder(sources);
         var previousState = await LoadPreviousStateAsync(root, ct);
 
-        var roundStates = new List<RoundProcessingState>(rounds.Count);
-        foreach (var (round, roundSources) in rounds)
+        // Decide per round whether the persisted results can be reused, and
+        // gather everything that still needs scanning into one flat work list
+        // so the parallel pass spans all rounds, not one round at a time.
+        var cachedStates = new RoundProcessingState?[rounds.Count];
+        var fingerprintsPerRound = new IReadOnlyList<SourceFingerprint>[rounds.Count];
+        var resultsPerRound = new SheetScanResult[rounds.Count][];
+        var work = new List<(ScanSource Source, int RoundIndex, int Position)>();
+
+        for (var roundIndex = 0; roundIndex < rounds.Count; roundIndex++)
         {
             ct.ThrowIfCancellationRequested();
 
+            var (round, roundSources) = rounds[roundIndex];
             var fingerprints = Fingerprint(root, roundSources);
+            fingerprintsPerRound[roundIndex] = fingerprints;
+
             if (previousState.TryGetValue(round, out var cached) &&
                 cached.Sources.SequenceEqual(fingerprints))
             {
                 logger.LogInformation(
                     "Round {Round} is unchanged — reusing {Count} persisted results", round, cached.Results.Count);
-                roundStates.Add(cached);
+                cachedStates[roundIndex] = cached;
                 continue;
             }
 
-            var results = await ScanRoundAsync(roundSources, ct);
-            roundStates.Add(new RoundProcessingState(round, fingerprints, results));
+            resultsPerRound[roundIndex] = new SheetScanResult[roundSources.Count];
+            for (var position = 0; position < roundSources.Count; position++)
+            {
+                work.Add((roundSources[position], roundIndex, position));
+            }
+        }
+
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = EffectiveDegreeOfParallelism,
+            CancellationToken = ct
+        };
+
+        await Parallel.ForEachAsync(
+            work,
+            parallelOptions,
+            async (item, token) =>
+                resultsPerRound[item.RoundIndex][item.Position] = await ScanSourceAsync(item.Source, token));
+
+        var roundStates = new List<RoundProcessingState>(rounds.Count);
+        for (var roundIndex = 0; roundIndex < rounds.Count; roundIndex++)
+        {
+            roundStates.Add(cachedStates[roundIndex] ?? new RoundProcessingState(
+                rounds[roundIndex].Round, fingerprintsPerRound[roundIndex], resultsPerRound[roundIndex]));
         }
 
         await stateRepository.SaveAsync(root, roundStates, ct);
@@ -79,26 +113,6 @@ public sealed class ScanQuizSheetsUseCase(
         }
 
         return Result<QuizResult>.Success(quizResult);
-    }
-
-    /// <summary>Scans one round's sheets concurrently, keeping the provider's order.</summary>
-    private async Task<IReadOnlyList<SheetScanResult>> ScanRoundAsync(
-        IReadOnlyList<ScanSource> roundSources,
-        CancellationToken ct)
-    {
-        var results = new SheetScanResult[roundSources.Count];
-        var parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = EffectiveDegreeOfParallelism,
-            CancellationToken = ct
-        };
-
-        await Parallel.ForEachAsync(
-            Enumerable.Range(0, roundSources.Count),
-            parallelOptions,
-            async (index, token) => results[index] = await ScanSourceAsync(roundSources[index], token));
-
-        return results;
     }
 
     private async Task<SheetScanResult> ScanSourceAsync(ScanSource source, CancellationToken ct)
