@@ -97,10 +97,22 @@ public sealed class HardRecognitionEndToEndTests
         // The pipeline may read it, flag it for review, or reject it — but an
         // auto-accepted wrong value is the one outcome that must never happen:
         // accepted results feed the standings without a human looking at them.
-        if (result.IsSuccess && result.ReviewStatus == ReviewStatus.Accepted)
+        // Whatever the outcome, it must be a *defined* one — a success carries
+        // a review decision, a failure says why — so a crash regression cannot
+        // pass this test unnoticed.
+        if (result.IsSuccess)
         {
-            result.TeamId.Should().Be(teamId, "an auto-accepted team id must be correct");
-            result.Score.Should().Be(score, "an auto-accepted score must be correct");
+            result.ReviewStatus.Should().NotBeNull("a successful run must carry a review decision");
+            if (result.ReviewStatus == ReviewStatus.Accepted)
+            {
+                result.TeamId.Should().Be(teamId, "an auto-accepted team id must be correct");
+                result.Score.Should().Be(score, "an auto-accepted score must be correct");
+            }
+        }
+        else
+        {
+            (result.Error ?? result.FailureCode?.ToString())
+                .Should().NotBeNullOrEmpty("a failed run must say why it failed");
         }
     }
 

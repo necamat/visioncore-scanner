@@ -138,8 +138,23 @@ public sealed class GrayImage
         }
     }
 
-    private static SKBitmap NewGrayBitmap(int width, int height) =>
-        new(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
+    private static SKBitmap NewGrayBitmap(int width, int height)
+    {
+        var bitmap = new SKBitmap(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
+
+        // Every Marshal.Copy below assumes tightly packed rows. Skia allocates
+        // Gray8 without padding today; if that ever changes, fail loudly here
+        // instead of silently shearing the image.
+        if (bitmap.RowBytes != bitmap.Width)
+        {
+            bitmap.Dispose();
+            throw new InvalidOperationException(
+                $"Gray8 bitmap rows are padded ({bitmap.RowBytes} bytes for width {width}); " +
+                "the pixel copies assume a tight layout.");
+        }
+
+        return bitmap;
+    }
 
     private static GrayImage FromGrayBitmap(SKBitmap bitmap)
     {

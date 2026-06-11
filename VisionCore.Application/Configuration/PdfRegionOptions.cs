@@ -9,7 +9,11 @@ namespace VisionCore.Application.Configuration;
 /// </summary>
 public sealed record PdfRegionOptions
 {
-    /// <summary>DPI used when rendering the PDF page to a bitmap.</summary>
+    /// <summary>
+    /// The DPI the pixel coordinates below were measured at. Informative for
+    /// the operator re-measuring a form — extraction itself works purely in
+    /// pixels and never consults this value.
+    /// </summary>
     public int Dpi { get; init; } = 200;
 
     /// <summary>TeamId container box (whole number area).</summary>

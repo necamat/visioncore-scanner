@@ -30,13 +30,23 @@ public sealed class RoundFolderScanSourceProvider(IOptions<ScanSourceOptions> op
 
         try
         {
-            foreach (var roundFolder in Directory.GetDirectories(root).OrderBy(f => f, StringComparer.Ordinal))
+            // Order rounds by their parsed number, not the folder name — an
+            // ordinal string sort would put R10 between R1 and R2.
+            var roundFolders = new List<(int Round, string Folder)>();
+            foreach (var roundFolder in Directory.GetDirectories(root))
             {
-                if (!TryParseRound(Path.GetFileName(roundFolder), out var round))
+                if (TryParseRound(Path.GetFileName(roundFolder), out var round))
                 {
-                    continue;
+                    roundFolders.Add((round, roundFolder));
                 }
+            }
 
+            var orderedFolders = roundFolders
+                .OrderBy(item => item.Round)
+                .ThenBy(item => item.Folder, StringComparer.Ordinal);
+
+            foreach (var (round, roundFolder) in orderedFolders)
+            {
                 var files = patterns
                     .SelectMany(pattern => Directory.GetFiles(roundFolder, pattern))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
