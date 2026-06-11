@@ -173,6 +173,26 @@ real scans, run a representative batch and inspect the per-digit values in the
 log (`TeamIdDigitConfidenceTrace` / `ScoreDigitConfidenceTrace`), then set
 `ConfidenceEvaluationOptions` accordingly.
 
+### Review workflow
+
+Scans the recognizer is not confident about are exported as `NeedsReview` and
+excluded from the standings until a human confirms them. The loop is:
+
+1. Open the exported workbook, check the flagged rows on the `Scans` sheet,
+   correct **Team ID** / **Score** where needed and set **Status** to
+   `Accepted` (or `Rejected`).
+2. Re-import the reviewed workbook — the standings are regenerated in place:
+
+```bash
+dotnet run -- --finalize ./output/rezultati.xlsx
+# without a path it defaults to the configured output workbook
+```
+
+The import is validated row by row (unknown status values, accepted rows
+without a score, non-numeric cells) and fails with the offending row's
+position without touching the workbook, so a typo in the review can never
+silently corrupt the standings.
+
 ---
 
 ## Test data

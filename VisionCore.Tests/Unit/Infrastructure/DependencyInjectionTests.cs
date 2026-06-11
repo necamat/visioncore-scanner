@@ -22,6 +22,7 @@ public sealed class DependencyInjectionTests
         provider.GetRequiredService<IDigitRecognizer>().Should().NotBeNull();
         provider.GetRequiredService<IPipelineFactory>().Should().NotBeNull();
         provider.GetRequiredService<IExcelExporter>().Should().NotBeNull();
+        provider.GetRequiredService<IReviewedScansReader>().Should().NotBeNull();
         provider.GetRequiredService<IProcessingStateRepository>().Should().NotBeNull();
     }
 
