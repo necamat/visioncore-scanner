@@ -64,6 +64,8 @@ public sealed class TemplateMatchingTeamIdRecognizerTests
         result.IsSuccess.Should().BeTrue();
         foreach (var digit in result.Number!.Digits)
         {
+            digit.Confidence.Should().BeLessThanOrEqualTo(
+                HeuristicConfidence.Strong, "heuristic reads must stay within the shared tiers");
             digit.Confidence.Should().BeLessThan(EvaluationDefaults.MinimumAcceptedConfidence);
             digit.Confidence.Should().BeGreaterThanOrEqualTo(EvaluationDefaults.MinimumReviewConfidence);
         }

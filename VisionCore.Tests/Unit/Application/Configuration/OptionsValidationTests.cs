@@ -90,6 +90,66 @@ public sealed class OptionsValidationTests
     }
 
     [Fact]
+    public void ConfidenceEvaluationOptions_Should_Pass_For_The_Defaults()
+    {
+        var validator = new ConfidenceEvaluationOptionsValidator();
+
+        var result = validator.Validate(null, new ConfidenceEvaluationOptions());
+
+        result.Succeeded.Should().BeTrue(result.FailureMessage);
+    }
+
+    [Fact]
+    public void ConfidenceEvaluationOptions_Should_Fail_When_Review_Floor_Reaches_The_Accept_Bar()
+    {
+        var validator = new ConfidenceEvaluationOptionsValidator();
+        var options = new ConfidenceEvaluationOptions
+        {
+            MinimumAcceptedConfidence = 0.80f,
+            MinimumReviewConfidence = 0.80f
+        };
+
+        var result = validator.Validate(null, options);
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("below");
+    }
+
+    [Fact]
+    public void ConfidenceEvaluationOptions_Should_Fail_When_The_Accept_Bar_Would_Auto_Accept_Heuristics()
+    {
+        // The whole point of the review mechanism: a heuristic guess must
+        // never clear the accept bar, no matter how the config is edited.
+        var validator = new ConfidenceEvaluationOptionsValidator();
+        var options = new ConfidenceEvaluationOptions
+        {
+            MinimumAcceptedConfidence = HeuristicConfidence.Strong,
+            MinimumReviewConfidence = 0.40f
+        };
+
+        var result = validator.Validate(null, options);
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("heuristic");
+    }
+
+    [Fact]
+    public void ConfidenceEvaluationOptions_Should_Fail_When_The_Review_Floor_Would_Reject_Heuristics()
+    {
+        var validator = new ConfidenceEvaluationOptionsValidator();
+        var options = new ConfidenceEvaluationOptions
+        {
+            MinimumAcceptedConfidence = 0.85f,
+            MinimumReviewConfidence = HeuristicConfidence.Weak + 0.01f
+        };
+
+        var result = validator.Validate(null, options);
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("rejected instead of reviewed");
+    }
+
+    [Fact]
     public void PdfRegionOptions_Should_Fail_For_An_Implausible_Dpi()
     {
         var validator = new PdfRegionOptionsValidator();

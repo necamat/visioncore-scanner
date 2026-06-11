@@ -44,6 +44,9 @@ internal static class AppHost
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // The cross-field rules (threshold ordering, heuristic-confidence
+        // contract) live in the dedicated validator.
+        services.AddSingleton<IValidateOptions<ConfidenceEvaluationOptions>, ConfidenceEvaluationOptionsValidator>();
         services.AddOptions<ConfidenceEvaluationOptions>()
             .Bind(context.Configuration.GetSection("ConfidenceEvaluationOptions"))
             .ValidateDataAnnotations()
