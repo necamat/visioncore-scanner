@@ -178,21 +178,27 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         var normalized = NormalizeFullRegion(source);
         var bestDigit = -1;
-        var bestConfidence = 0f;
+        var bestAgreement = 0f;
+        var bestOtherAgreement = 0f;
 
         foreach (var template in _boxedTemplates)
         {
-            var confidence = CalculateTemplateConfidence(normalized, template.Value);
-            if (confidence > bestConfidence)
+            var agreement = CalculateTemplateConfidence(normalized, template.Value);
+            if (agreement > bestAgreement)
             {
-                bestConfidence = confidence;
+                bestOtherAgreement = bestAgreement;
+                bestAgreement = agreement;
                 bestDigit = template.Key;
+            }
+            else if (agreement > bestOtherAgreement)
+            {
+                bestOtherAgreement = agreement;
             }
         }
 
         return bestDigit < 0
             ? null
-            : new RecognizedDigit(region, bestDigit, bestConfidence);
+            : new RecognizedDigit(region, bestDigit, ScaleByMargin(bestAgreement, bestOtherAgreement));
     }
 
     /// <summary>

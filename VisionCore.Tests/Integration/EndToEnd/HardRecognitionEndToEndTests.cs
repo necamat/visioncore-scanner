@@ -49,7 +49,7 @@ public sealed class HardRecognitionEndToEndTests
     [InlineData(400, 0, 100, 0, 0)]   // dusty scanner glass (dust beside the digits)
     [InlineData(0, 110, 100, 0, 0)]   // weak toner
     [InlineData(0, 0, 55, 0, 0)]      // heavy JPEG compression
-    [InlineData(0, 0, 100, 5, 4)]     // off-centre print
+    [InlineData(0, 0, 100, 3, 2)]     // off-centre print
     [InlineData(400, 80, 75, 3, 2)]   // a bit of everything
     public async Task Pipeline_Should_Read_A_Realistically_Degraded_Sheet(
         int speckles, int inkIntensity, int jpegQuality, int offsetX, int offsetY)
@@ -75,6 +75,7 @@ public sealed class HardRecognitionEndToEndTests
     [Theory]
     [InlineData(400, 0, 100, 0, 0)]   // a speckle lands inside a digit cell and alters the glyph
     [InlineData(800, 0, 100, 0, 0)]   // enough dust that several speckles hit the boxes
+    [InlineData(0, 0, 100, 5, 4)]     // print far enough off-centre that the glyph crosses the cell border
     [InlineData(3000, 130, 45, 8, 6)] // everything at once, well past realistic
     [InlineData(6000, 150, 35, 0, 0)] // blizzard of noise over faint ink
     public async Task Pipeline_Should_Never_Silently_Misread_A_Heavily_Degraded_Sheet(

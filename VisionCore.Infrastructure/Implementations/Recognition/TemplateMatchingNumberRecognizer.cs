@@ -135,10 +135,20 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
             return null;
         }
 
+        return new RecognizedDigit(region, bestDigit, ScaleByMargin(bestAgreement, bestOtherDigitAgreement));
+    }
+
+    /// <summary>
+    /// Applies the margin-aware certainty factor to a raw agreement score.
+    /// Shared by every template-matching path so no fallback can report a
+    /// near-tie at full confidence.
+    /// </summary>
+    protected static float ScaleByMargin(float bestAgreement, float bestOtherDigitAgreement)
+    {
         var margin = bestAgreement - bestOtherDigitAgreement;
         var certainty = MinimumCertainty +
             ((1f - MinimumCertainty) * Math.Clamp(margin / FullCertaintyMargin, 0f, 1f));
-        return new RecognizedDigit(region, bestDigit, bestAgreement * certainty);
+        return bestAgreement * certainty;
     }
 
     protected static NumberRecognitionResult Failure(
