@@ -79,6 +79,20 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
             .ToList();
     }
 
+    /// <summary>
+    /// Pixel agreement alone is a poor certainty signal: a wrong template can
+    /// still agree on 85% of pixels of a degraded glyph. The margin to the
+    /// best *other* digit is what separates a confident read from a guess, so
+    /// the reported confidence is the agreement scaled by a certainty factor
+    /// that falls from 1 (margin at or above <see cref="FullCertaintyMargin"/>)
+    /// to <see cref="MinimumCertainty"/> (a dead tie). The floor keeps cleanly
+    /// scanned digits — whose margins shrink through JPEG encoding, cropping
+    /// and border removal — comfortably above the accept threshold, while a
+    /// near-tie still loses enough confidence to land in the review band.
+    /// </summary>
+    private const float FullCertaintyMargin = 0.02f;
+    private const float MinimumCertainty = 0.85f;
+
     protected RecognizedDigit? RecognizeGlyph(GrayImage source, FormRegion region)
     {
         var glyph = NormalizeGlyph(source);
@@ -88,27 +102,43 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
         }
 
         var bestDigit = -1;
-        var bestConfidence = 0f;
+        var bestAgreement = 0f;
+        var bestOtherDigitAgreement = 0f;
 
         foreach (var templateSet in _templates)
         {
             foreach (var template in templateSet.Value)
             {
-                var confidence = CalculateConfidence(glyph, template);
-                if (confidence > bestConfidence)
+                var agreement = CalculateConfidence(glyph, template);
+                if (agreement > bestAgreement)
                 {
-                    bestConfidence = confidence;
+                    if (templateSet.Key != bestDigit)
+                    {
+                        bestOtherDigitAgreement = bestAgreement;
+                    }
+
+                    bestAgreement = agreement;
                     bestDigit = templateSet.Key;
+                }
+                else if (templateSet.Key != bestDigit && agreement > bestOtherDigitAgreement)
+                {
+                    bestOtherDigitAgreement = agreement;
                 }
             }
         }
 
-        if (bestDigit < 0 || bestConfidence < options.TemplateMatchThreshold)
+        // The raw agreement decides whether a glyph was matched at all; the
+        // margin only lowers the *reported* confidence so an ambiguous read
+        // routes to human review instead of being dropped.
+        if (bestDigit < 0 || bestAgreement < options.TemplateMatchThreshold)
         {
             return null;
         }
 
-        return new RecognizedDigit(region, bestDigit, bestConfidence);
+        var margin = bestAgreement - bestOtherDigitAgreement;
+        var certainty = MinimumCertainty +
+            ((1f - MinimumCertainty) * Math.Clamp(margin / FullCertaintyMargin, 0f, 1f));
+        return new RecognizedDigit(region, bestDigit, bestAgreement * certainty);
     }
 
     protected static NumberRecognitionResult Failure(

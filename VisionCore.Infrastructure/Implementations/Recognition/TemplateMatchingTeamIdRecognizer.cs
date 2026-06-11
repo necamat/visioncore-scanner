@@ -22,12 +22,14 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     // Shape heuristics are educated guesses, not template evidence, so their
     // confidence is capped below the accepted threshold (see
     // ConfidenceEvaluationOptions): a heuristic read must always land in the
-    // needs-review band and reach a human, never auto-accept. The tiers
-    // preserve the relative strength of the rules so best-candidate selection
-    // still prefers the stronger rule.
-    private const float StrongHeuristicConfidence = 0.75f;
-    private const float ModerateHeuristicConfidence = 0.73f;
-    private const float WeakHeuristicConfidence = 0.71f;
+    // needs-review band and reach a human, never auto-accept. The tiers sit
+    // well below the weakest clean template read (~0.79) so the accept
+    // threshold can be calibrated between the two, and they preserve the
+    // relative strength of the rules so best-candidate selection still
+    // prefers the stronger rule.
+    private const float StrongHeuristicConfidence = 0.70f;
+    private const float ModerateHeuristicConfidence = 0.68f;
+    private const float WeakHeuristicConfidence = 0.66f;
 
     private static readonly FormRegion[] TeamIdRegions =
     [

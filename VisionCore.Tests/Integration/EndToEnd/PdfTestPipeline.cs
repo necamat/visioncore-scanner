@@ -24,9 +24,14 @@ internal static class PdfTestPipeline
                 TemplateMatchThreshold = 0.55f,
                 DarkPixelThreshold = 180
             })),
+            // Calibrated for the synthetic JPEG render: the accept bar sits
+            // above the heuristic confidence cap (0.70) so heuristic reads
+            // always route to review, and just below the weakest clean
+            // template read (~0.79 — the "0" in the team-id box) so clean
+            // sheets auto-accept. The evaluation gates on the weakest digit.
             Options.Create(new ConfidenceEvaluationOptions
             {
-                MinimumAcceptedConfidence = 0.55f,
+                MinimumAcceptedConfidence = 0.78f,
                 MinimumReviewConfidence = 0.40f
             }),
             NullLoggerFactory.Instance);
