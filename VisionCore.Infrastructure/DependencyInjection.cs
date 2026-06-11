@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using VisionCore.Application.Abstractions;
+using VisionCore.Application.Configuration;
 using VisionCore.Infrastructure.Factories;
 using VisionCore.Infrastructure.Implementations;
 using VisionCore.Infrastructure.Implementations.Pdf;
@@ -23,7 +25,19 @@ public static class DependencyInjection
 
         services.AddSingleton<IRegionExtractor, PdfRegionExtractor>();
         services.AddSingleton<ITeamIdRecognizer, TemplateMatchingTeamIdRecognizer>();
-        services.AddSingleton<IScoreRecognizer, TemplateMatchingScoreRecognizer>();
+
+        // The score engine is configurable: template matching (deterministic,
+        // tuned for the rendered form) or an ONNX MNIST-class model (made for
+        // handwriting). The printed team id always uses template matching.
+        services.AddSingleton<IScoreRecognizer>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<DigitRecognitionOptions>>();
+            return options.Value.ScoreEngine switch
+            {
+                ScoreRecognitionEngine.Onnx => new OnnxScoreRecognizer(options),
+                _ => new TemplateMatchingScoreRecognizer(options)
+            };
+        });
 
         // Construct explicitly via the (teamId, score) constructor — the type also
         // has a convenience IOptions constructor, which would make DI ambiguous.

@@ -102,6 +102,33 @@ is a localized change — no use-case, pipeline, mapping or export code is touch
 Low-confidence reads are surfaced as `NeedsReview` rather than guessed, which is
 the correct behaviour for any real scanning system.
 
+### ONNX engine for handwritten scores
+
+The port swap is not just theory — the score digits (handwritten on a real
+form, which font templates are structurally bad at) can be recognized by an
+**MNIST-class CNN via ONNX Runtime** instead:
+
+```json
+"DigitRecognitionOptions": {
+  "ScoreEngine": "Onnx",
+  "OnnxModelPath": "./Models/mnist-12.onnx"
+}
+```
+
+`OnnxScoreRecognizer` plugs in behind the same `IScoreRecognizer` port — the
+printed team id keeps using template matching, and no pipeline, evaluation or
+export code changes. Each digit cell goes through the shared glyph isolation
+(border/edge-ink removal), is normalized the MNIST way (20x20 box centered on
+a 28x28 field), and the reported confidence is the model's softmax probability
+for the winning digit — a confident read sits near 1.0 and an ambiguous one
+falls into the review band on its own, so the existing accept/review thresholds
+keep working without code changes. (Those thresholds were calibrated for the
+template engine; for production handwriting you would re-check them against a
+real sample.) The committed model (`mnist-12.onnx`, 26 KB, from the
+[ONNX Model Zoo](https://github.com/onnx/models), Apache-2.0) runs fully
+offline; tests verify it against thirty genuine handwritten MNIST samples
+committed under `TestData/Mnist`.
+
 ### PDF pipeline
 
 ```
@@ -245,6 +272,8 @@ including transitive dependencies.
 | └ ClosedXML.Parser, DocumentFormat.OpenXml, ExcelNumberFormat, RBush.Signed, System.IO.Packaging | MIT |
 | └ SixLabors.Fonts `1.0.0` (transitive via ClosedXML) | Apache-2.0 |
 | PdfPig | Apache-2.0 |
+| Microsoft.ML.OnnxRuntime | MIT |
+| └ `mnist-12.onnx` model (ONNX Model Zoo) | Apache-2.0 |
 | Microsoft.Extensions.* (Hosting, DI, Configuration, Options, Logging) | MIT |
 | Serilog (+ Console / File sinks, Hosting, Settings.Configuration) | Apache-2.0 |
 

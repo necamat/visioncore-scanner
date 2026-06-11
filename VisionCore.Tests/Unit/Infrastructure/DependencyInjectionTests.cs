@@ -2,8 +2,11 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using VisionCore.Application.Abstractions;
+using VisionCore.Application.Configuration;
 using VisionCore.Infrastructure;
+using VisionCore.Infrastructure.Implementations.Recognition;
 using Xunit;
 
 namespace VisionCore.Tests.Unit.Infrastructure;
@@ -44,13 +47,40 @@ public sealed class DependencyInjectionTests
             provider.GetRequiredService<IExcelExporter>());
     }
 
-    private static ServiceProvider BuildProvider()
+    [Fact]
+    public void AddScanningInfrastructure_Should_Use_Template_Matching_For_The_Score_By_Default()
+    {
+        using var provider = BuildProvider();
+
+        provider.GetRequiredService<IScoreRecognizer>()
+            .Should().BeOfType<TemplateMatchingScoreRecognizer>();
+    }
+
+    [Fact]
+    public void AddScanningInfrastructure_Should_Switch_The_Score_Engine_To_Onnx_From_Options()
+    {
+        using var provider = BuildProvider(new DigitRecognitionOptions
+        {
+            ScoreEngine = ScoreRecognitionEngine.Onnx,
+            OnnxModelPath = "Models/mnist-12.onnx"
+        });
+
+        provider.GetRequiredService<IScoreRecognizer>().Should().BeOfType<OnnxScoreRecognizer>();
+    }
+
+    private static ServiceProvider BuildProvider(DigitRecognitionOptions? digitOptions = null)
     {
         var services = new ServiceCollection();
         services.AddOptions();
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         services.AddScanningInfrastructure();
+
+        if (digitOptions is not null)
+        {
+            services.AddSingleton(Options.Create(digitOptions));
+        }
+
         return services.BuildServiceProvider();
     }
 }
