@@ -1,5 +1,6 @@
 namespace VisionCore.Infrastructure.Imaging;
 
+using System.Runtime.InteropServices;
 using SkiaSharp;
 
 /// <summary>
@@ -18,7 +19,6 @@ public static class GlyphRenderer
     /// <summary>Renders a single digit centered on a white image of the given size.</summary>
     public static GrayImage RenderDigit(int digit, int width, int height, float textSize, SKTypeface typeface)
     {
-        var result = GrayImage.CreateWhite(width, height);
         var text = digit.ToString();
 
         using var paint = new SKPaint { Color = SKColors.Black, IsAntialias = true };
@@ -34,19 +34,19 @@ public static class GlyphRenderer
         canvas.DrawText(text, x, y, SKTextAlign.Left, font, paint);
         canvas.Flush();
 
+        // Convert the rendered RGBA snapshot to Gray8 in one bulk draw instead
+        // of reading pixel colors one at a time. Black-on-white glyph pixels are
+        // neutral (R = G = B), so the conversion is exact.
         using var snapshot = surface.Snapshot();
-        using var pixmap = snapshot.PeekPixels();
-        for (var py = 0; py < height; py++)
+        using var gray = new SKBitmap(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
+        using (var grayCanvas = new SKCanvas(gray))
         {
-            for (var px = 0; px < width; px++)
-            {
-                var color = pixmap.GetPixelColor(px, py);
-                var intensity = (byte)((color.Red + color.Green + color.Blue) / 3);
-                result.SetIntensity(px, py, intensity);
-            }
+            grayCanvas.DrawImage(snapshot, 0, 0);
         }
 
-        return result;
+        var pixels = new byte[width * height];
+        Marshal.Copy(gray.GetPixels(), pixels, 0, pixels.Length);
+        return GrayImage.FromGray8(width, height, pixels);
     }
 
     private static IReadOnlyList<SKTypeface> BuildTypefaces()

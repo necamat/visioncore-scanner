@@ -1,3 +1,10 @@
+# Normalize all text files to LF in the repository. C# sources check out as
+# CRLF on every platform so the working tree always matches the .editorconfig
+# end_of_line = crlf rule and `dotnet format --verify-no-changes` is
+# deterministic on Windows, Linux and macOS runners alike.
+* text=auto
+*.cs text eol=crlf
+
 # Treat binary assets verbatim — never apply line-ending (CRLF/LF) normalization.
 *.pdf   binary
 *.png   binary

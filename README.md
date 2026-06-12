@@ -154,6 +154,25 @@ to the console and a daily rolling file under `./logs` (Serilog).
 dotnet test VisionCore.slnx
 ```
 
+### Incremental runs & parallelism
+
+Sheets are scanned concurrently across all rounds; the worker count comes from
+`ProcessingOptions.MaxDegreeOfParallelism` (0 = one per core). Each round's
+results are persisted to `.visioncore-state.json` in the input root together
+with file fingerprints and a hash of the recognition configuration — on the
+next run, rounds whose files (and configuration) are unchanged reuse their
+results instead of being scanned again. Set
+`ProcessingOptions.ReuseUnchangedRounds` to `false` to force a full re-scan.
+
+### Calibrating the confidence thresholds
+
+The evaluation gates on the **weakest digit** of a sheet. The accept threshold
+must sit above the heuristic confidence tiers (validated at startup) and below
+the weakest clean template read for your scan stack. To re-calibrate against
+real scans, run a representative batch and inspect the per-digit values in the
+log (`TeamIdDigitConfidenceTrace` / `ScoreDigitConfidenceTrace`), then set
+`ConfidenceEvaluationOptions` accordingly.
+
 ---
 
 ## Test data

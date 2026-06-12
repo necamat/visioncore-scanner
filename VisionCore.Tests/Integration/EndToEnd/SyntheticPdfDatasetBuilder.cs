@@ -70,23 +70,29 @@ public sealed class SyntheticPdfDatasetBuilder
         {
             var roundFolder = Path.Combine(rootFolder, $"R{entry.Round}");
             Directory.CreateDirectory(roundFolder);
-            CreateSheetPdf(Path.Combine(roundFolder, entry.FileName), entry.ExpectedTeamId, entry.ExpectedScore);
+            CreateSheetPdf(
+                Path.Combine(roundFolder, entry.FileName),
+                entry.ExpectedTeamId,
+                entry.ExpectedScore,
+                SheetDistortion.None);
         }
     }
 
     /// <summary>
     /// Renders a single sheet PDF. When <paramref name="score"/> is null the
     /// three score boxes are left blank, driving the recognition-failure path.
+    /// An optional <see cref="SheetDistortion"/> degrades the render the way a
+    /// real scanner would (speckle noise, faint ink, compression, offset print).
     /// </summary>
-    public void BuildSheet(string pdfPath, int teamId, int? score)
+    public void BuildSheet(string pdfPath, int teamId, int? score, SheetDistortion? distortion = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(pdfPath)!);
-        CreateSheetPdf(pdfPath, teamId, score);
+        CreateSheetPdf(pdfPath, teamId, score, distortion ?? SheetDistortion.None);
     }
 
-    private static void CreateSheetPdf(string pdfPath, int teamId, int? score)
+    private static void CreateSheetPdf(string pdfPath, int teamId, int? score, SheetDistortion distortion)
     {
-        var jpegBytes = RenderPageJpeg(teamId, score);
+        var jpegBytes = RenderPageJpeg(teamId, score, distortion);
 
         var builder = new PdfDocumentBuilder();
         var page = builder.AddPage(PageSize.A4);
@@ -95,14 +101,15 @@ public sealed class SyntheticPdfDatasetBuilder
         File.WriteAllBytes(pdfPath, builder.Build());
     }
 
-    private static byte[] RenderPageJpeg(int teamId, int? score)
+    private static byte[] RenderPageJpeg(int teamId, int? score, SheetDistortion distortion)
     {
         var info = new SKImageInfo(PageWidth, PageHeight);
         using var surface = SKSurface.Create(info);
         var canvas = surface.Canvas;
         canvas.Clear(SKColors.White);
 
-        using var ink = new SKPaint { Color = SKColors.Black, IsAntialias = true };
+        var inkColor = new SKColor(distortion.InkIntensity, distortion.InkIntensity, distortion.InkIntensity);
+        using var ink = new SKPaint { Color = inkColor, IsAntialias = true };
 
         DrawCornerMarkers(canvas, ink);
 
@@ -113,21 +120,61 @@ public sealed class SyntheticPdfDatasetBuilder
         DrawBox(canvas, ink, ScoreDigit3Box);
 
         var teamText = teamId.ToString("00");
-        DrawDigit(canvas, ink, teamText[0].ToString(), TeamIdDigit1Box);
-        DrawDigit(canvas, ink, teamText[1].ToString(), TeamIdDigit2Box);
+        DrawDigit(canvas, ink, teamText[0].ToString(), TeamIdDigit1Box, distortion);
+        DrawDigit(canvas, ink, teamText[1].ToString(), TeamIdDigit2Box, distortion);
 
         if (score is not null)
         {
             var scoreText = score.Value.ToString("000");
-            DrawDigit(canvas, ink, scoreText[0].ToString(), ScoreDigit1Box);
-            DrawDigit(canvas, ink, scoreText[1].ToString(), ScoreDigit2Box);
-            DrawDigit(canvas, ink, scoreText[2].ToString(), ScoreDigit3Box);
+            DrawDigit(canvas, ink, scoreText[0].ToString(), ScoreDigit1Box, distortion);
+            DrawDigit(canvas, ink, scoreText[1].ToString(), ScoreDigit2Box, distortion);
+            DrawDigit(canvas, ink, scoreText[2].ToString(), ScoreDigit3Box, distortion);
         }
+
+        DrawSpeckleNoise(canvas, distortion);
 
         canvas.Flush();
         using var image = surface.Snapshot();
-        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 100);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, distortion.JpegQuality);
         return data.ToArray();
+    }
+
+    /// <summary>
+    /// Scatters small dark speckles over the whole page, like dust on the
+    /// scanner glass. Seeded, so a given distortion renders identically on
+    /// every run and platform. With
+    /// <see cref="SheetDistortion.KeepSpecklesOffDigits"/> the digit cells are
+    /// left clean (dust beside the print, not on it).
+    /// </summary>
+    private static void DrawSpeckleNoise(SKCanvas canvas, SheetDistortion distortion)
+    {
+        if (distortion.NoiseSpeckles <= 0)
+        {
+            return;
+        }
+
+        var random = new Random(distortion.RandomSeed);
+        using var speckle = new SKPaint { Color = new SKColor(60, 60, 60) };
+
+        Rectangle[] digitCells =
+        [
+            TeamIdDigit1Box, TeamIdDigit2Box, ScoreDigit1Box, ScoreDigit2Box, ScoreDigit3Box
+        ];
+
+        for (var i = 0; i < distortion.NoiseSpeckles; i++)
+        {
+            var x = random.Next(PageWidth);
+            var y = random.Next(PageHeight);
+            var size = random.Next(1, 3);
+
+            if (distortion.KeepSpecklesOffDigits &&
+                digitCells.Any(cell => cell.IntersectsWith(new Rectangle(x - 2, y - 2, size + 4, size + 4))))
+            {
+                continue;
+            }
+
+            canvas.DrawRect(x, y, size, size, speckle);
+        }
     }
 
     /// <summary>Draws the four filled L-markers using the VBA marker geometry.</summary>
@@ -169,12 +216,12 @@ public sealed class SyntheticPdfDatasetBuilder
         canvas.DrawRect(box.Right - w, box.Top, w, box.Height, ink);
     }
 
-    private static void DrawDigit(SKCanvas canvas, SKPaint ink, string digit, Rectangle box)
+    private static void DrawDigit(SKCanvas canvas, SKPaint ink, string digit, Rectangle box, SheetDistortion distortion)
     {
         using var font = new SKFont(Typeface, box.Height * 0.58f);
         var textWidth = font.MeasureText(digit, out var bounds, ink);
-        var x = box.Left + ((box.Width - textWidth) / 2f);
-        var y = box.Top + (box.Height / 2f) - bounds.MidY;
+        var x = box.Left + ((box.Width - textWidth) / 2f) + distortion.DigitOffsetX;
+        var y = box.Top + (box.Height / 2f) - bounds.MidY + distortion.DigitOffsetY;
         canvas.DrawText(digit, x, y, SKTextAlign.Left, font, ink);
     }
 

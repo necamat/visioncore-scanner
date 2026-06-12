@@ -77,10 +77,7 @@ public sealed class PdfRegionExtractor(IOptions<PdfRegionOptions> options) : IRe
                 "Could not decode any embedded image from PDF page 1.");
         }
 
-        using (pageImage)
-        {
-            return CropRegions(pageImage);
-        }
+        return CropRegions(pageImage);
     }
 
     private static GrayImage? TryLoadImage(UglyToad.PdfPig.Content.IPdfImage pdfImage)
@@ -123,7 +120,7 @@ public sealed class PdfRegionExtractor(IOptions<PdfRegionOptions> options) : IRe
             // Clamp to page dimensions to avoid an out-of-bounds crop.
             rect = ClampToPage(rect, page.Width, page.Height);
 
-            using var cropped = page.Crop(rect);
+            var cropped = page.Crop(rect);
 
             croppedRegions.Add(new CroppedRegion(
                 region,
@@ -139,13 +136,13 @@ public sealed class PdfRegionExtractor(IOptions<PdfRegionOptions> options) : IRe
     private Dictionary<FormRegion, PdfRegionBounds> BuildRegionMap() =>
         new()
         {
-            [FormRegion.TeamId]       = _options.TeamId,
+            [FormRegion.TeamId] = _options.TeamId,
             [FormRegion.TeamIdDigit1] = _options.TeamIdDigit1,
             [FormRegion.TeamIdDigit2] = _options.TeamIdDigit2,
-            [FormRegion.Score]        = _options.Score,
-            [FormRegion.ScoreDigit1]  = _options.ScoreDigit1,
-            [FormRegion.ScoreDigit2]  = _options.ScoreDigit2,
-            [FormRegion.ScoreDigit3]  = _options.ScoreDigit3,
+            [FormRegion.Score] = _options.Score,
+            [FormRegion.ScoreDigit1] = _options.ScoreDigit1,
+            [FormRegion.ScoreDigit2] = _options.ScoreDigit2,
+            [FormRegion.ScoreDigit3] = _options.ScoreDigit3,
         };
 
     private static Rectangle ClampToPage(Rectangle rect, int pageWidth, int pageHeight)

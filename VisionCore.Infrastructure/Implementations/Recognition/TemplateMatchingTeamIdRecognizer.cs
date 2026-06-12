@@ -1,7 +1,7 @@
 namespace VisionCore.Infrastructure.Implementations.Recognition;
 
-using Microsoft.Extensions.Options;
 using System.Drawing;
+using Microsoft.Extensions.Options;
 using VisionCore.Application.Abstractions;
 using VisionCore.Application.Configuration;
 using VisionCore.Domain.Imaging.Cropping;
@@ -18,6 +18,17 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 {
     private const int BoxTemplateWidth = 64;
     private const int BoxTemplateHeight = 112;
+
+    // Shape heuristics are educated guesses, not template evidence, so their
+    // confidence comes from the shared HeuristicConfidence tiers, which sit
+    // below the accepted threshold (enforced at startup by
+    // ConfidenceEvaluationOptionsValidator): a heuristic read always lands in
+    // the needs-review band and reaches a human, never auto-accepts. The
+    // tiers also sit well below the weakest clean template read (~0.79) so
+    // the accept threshold can be calibrated between the two.
+    private const float StrongHeuristicConfidence = HeuristicConfidence.Strong;
+    private const float ModerateHeuristicConfidence = HeuristicConfidence.Moderate;
+    private const float WeakHeuristicConfidence = HeuristicConfidence.Weak;
 
     private static readonly FormRegion[] TeamIdRegions =
     [
@@ -38,8 +49,8 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         ct.ThrowIfCancellationRequested();
 
-        var hasTeamIdContainer = regions.Regions.Any(region => region.Region == FormRegion.TeamId);
-        var hasDigitRegions = TeamIdRegions.All(region => regions.Regions.Any(item => item.Region == region));
+        var hasTeamIdContainer = regions.Contains(FormRegion.TeamId);
+        var hasDigitRegions = TeamIdRegions.All(regions.Contains);
 
         if (!hasTeamIdContainer && !hasDigitRegions)
         {
@@ -76,23 +87,13 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
     private IReadOnlyList<RecognizedDigit?> ReadDigitsFromContainer(CroppedRegion region, CancellationToken ct)
     {
-        using var bitmap = Load(region);
+        var bitmap = Load(region);
         var extractedBoxes = ExtractBoxContents(bitmap, expectedRuns: 2);
         if (extractedBoxes.Count == 2)
         {
-            try
-            {
-                return extractedBoxes
-                    .Select((box, index) => RecognizePrintedDigit(box, TeamIdRegions[index], ct))
-                    .ToList();
-            }
-            finally
-            {
-                foreach (var box in extractedBoxes)
-                {
-                    box.Dispose();
-                }
-            }
+            return extractedBoxes
+                .Select((box, index) => RecognizePrintedDigit(box, TeamIdRegions[index], ct))
+                .ToList();
         }
 
         if (bitmap.Width > bitmap.Height * 1.35f)
@@ -112,7 +113,7 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         ct.ThrowIfCancellationRequested();
 
-        using var bitmap = Load(region);
+        var bitmap = Load(region);
         return RecognizePrintedDigit(bitmap, region.Region, ct);
     }
 
@@ -124,8 +125,8 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
         foreach (var insetPercent in new[] { 0.12f, 0.16f, 0.20f, 0.24f, 0.28f })
         {
-            using var candidate = CropInset(source, insetPercent);
-            using var prepared = PrepareForRecognition(candidate);
+            var candidate = CropInset(source, insetPercent);
+            var prepared = PrepareForRecognition(candidate);
 
             // Template matching is authoritative when it clears the match
             // threshold; the shape heuristic only disambiguates 0/1 when the
@@ -166,8 +167,8 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
         return runCount switch
         {
-            >= 2 => new RecognizedDigit(region, 0, 0.998f),
-            1 => new RecognizedDigit(region, 1, 0.970f),
+            >= 2 => new RecognizedDigit(region, 0, StrongHeuristicConfidence),
+            1 => new RecognizedDigit(region, 1, WeakHeuristicConfidence),
             _ => null
         };
     }
@@ -176,29 +177,35 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         var normalized = NormalizeFullRegion(source);
         var bestDigit = -1;
-        var bestConfidence = 0f;
+        var bestAgreement = 0f;
+        var bestOtherAgreement = 0f;
 
         foreach (var template in _boxedTemplates)
         {
-            var confidence = CalculateTemplateConfidence(normalized, template.Value);
-            if (confidence > bestConfidence)
+            var agreement = CalculateTemplateConfidence(normalized, template.Value);
+            if (agreement > bestAgreement)
             {
-                bestConfidence = confidence;
+                bestOtherAgreement = bestAgreement;
+                bestAgreement = agreement;
                 bestDigit = template.Key;
+            }
+            else if (agreement > bestOtherAgreement)
+            {
+                bestOtherAgreement = agreement;
             }
         }
 
         return bestDigit < 0
             ? null
-            : new RecognizedDigit(region, bestDigit, bestConfidence);
+            : new RecognizedDigit(region, bestDigit, ScaleByMargin(bestAgreement, bestOtherAgreement));
     }
 
     /// <summary>
     /// Shape-based fallback that disambiguates the hardest printed cases (0 vs 1)
     /// when template matching is weak. The thresholds (aspect-ratio bands, hole
-    /// count, centre-band ink ratio, dark-run count) and the high confidences are
-    /// empirical tuning values for the 200-DPI form, not general constants — hence
-    /// they are inlined here rather than surfaced as configuration.
+    /// count, centre-band ink ratio, dark-run count) are empirical tuning values
+    /// for the 200-DPI form, not general constants — hence they are inlined here
+    /// rather than surfaced as configuration.
     /// </summary>
     private RecognizedDigit? TryRecognizePrintedDigitHeuristically(GrayImage prepared, FormRegion region)
     {
@@ -217,19 +224,19 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
         if (middleBandRunCount >= 2 && aspectRatio <= 0.20f)
         {
-            return new RecognizedDigit(region, 0, 0.995f);
+            return new RecognizedDigit(region, 0, StrongHeuristicConfidence);
         }
 
         if ((holeCount == 1 || centerBandInkRatio <= 0.08f) &&
             aspectRatio >= 0.20f &&
             aspectRatio <= 0.45f)
         {
-            return new RecognizedDigit(region, 0, 0.985f);
+            return new RecognizedDigit(region, 0, ModerateHeuristicConfidence);
         }
 
         if (aspectRatio <= 0.32f && holeCount == 0 && centerBandInkRatio >= 0.14f && middleBandRunCount == 1)
         {
-            return new RecognizedDigit(region, 1, 0.995f);
+            return new RecognizedDigit(region, 1, StrongHeuristicConfidence);
         }
 
         return null;
@@ -277,18 +284,6 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
         return runs;
     }
 
-    private static GrayImage CropInset(GrayImage source, float insetPercent)
-    {
-        var insetX = Math.Max(1, (int)Math.Round(source.Width * insetPercent));
-        var insetY = Math.Max(1, (int)Math.Round(source.Height * insetPercent));
-        var left = Math.Clamp(insetX, 0, source.Width - 2);
-        var top = Math.Clamp(insetY, 0, source.Height - 2);
-        var right = Math.Clamp(source.Width - insetX, left + 1, source.Width);
-        var bottom = Math.Clamp(source.Height - insetY, top + 1, source.Height);
-        var bounds = Rectangle.FromLTRB(left, top, right, bottom);
-        return source.Crop(bounds);
-    }
-
     private static IReadOnlyDictionary<int, bool[,]> BuildBoxTemplates(DigitRecognitionOptions options) =>
         Enumerable.Range(0, 10).ToDictionary(digit => digit, digit => BuildBoxTemplate(digit, options));
 
@@ -296,7 +291,7 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
     {
         // A boxed-digit template: the digit glyph centered inside a thin border,
         // matching how a single printed digit looks inside its form box.
-        using var glyph = GlyphRenderer.RenderDigit(
+        var glyph = GlyphRenderer.RenderDigit(
             digit, BoxTemplateWidth, BoxTemplateHeight, BoxTemplateHeight * 0.58f,
             GlyphRenderer.TemplateTypefaces[0]);
 
@@ -319,7 +314,7 @@ public sealed class TemplateMatchingTeamIdRecognizer(DigitRecognitionOptions opt
 
     private static bool[,] NormalizeFullRegion(GrayImage source, DigitRecognitionOptions options)
     {
-        using var normalized = source.Resize(BoxTemplateWidth, BoxTemplateHeight);
+        var normalized = source.Resize(BoxTemplateWidth, BoxTemplateHeight);
 
         var pixels = new bool[BoxTemplateWidth, BoxTemplateHeight];
         for (var x = 0; x < BoxTemplateWidth; x++)

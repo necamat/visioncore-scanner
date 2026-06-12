@@ -2,8 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using VisionCore.Application.Abstractions;
 using VisionCore.Infrastructure.Factories;
 using VisionCore.Infrastructure.Implementations;
-using VisionCore.Infrastructure.Implementations.Recognition;
 using VisionCore.Infrastructure.Implementations.Pdf;
+using VisionCore.Infrastructure.Implementations.Recognition;
 
 namespace VisionCore.Infrastructure;
 
@@ -15,20 +15,25 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddScanningInfrastructure(this IServiceCollection services)
     {
-        services.AddTransient<IScanSourceProvider, RoundFolderScanSourceProvider>();
+        // Every service here is stateless and thread-safe after construction,
+        // so singletons are the natural lifetime. For the recognizers it also
+        // matters for cost: they render their full digit-template sets in the
+        // constructor, which must happen once per process, not per resolution.
+        services.AddSingleton<IScanSourceProvider, RoundFolderScanSourceProvider>();
 
-        services.AddTransient<IRegionExtractor, PdfRegionExtractor>();
-        services.AddTransient<ITeamIdRecognizer, TemplateMatchingTeamIdRecognizer>();
-        services.AddTransient<IScoreRecognizer, TemplateMatchingScoreRecognizer>();
+        services.AddSingleton<IRegionExtractor, PdfRegionExtractor>();
+        services.AddSingleton<ITeamIdRecognizer, TemplateMatchingTeamIdRecognizer>();
+        services.AddSingleton<IScoreRecognizer, TemplateMatchingScoreRecognizer>();
 
         // Construct explicitly via the (teamId, score) constructor — the type also
         // has a convenience IOptions constructor, which would make DI ambiguous.
-        services.AddTransient<IDigitRecognizer>(sp => new TemplateMatchingDigitRecognizer(
+        services.AddSingleton<IDigitRecognizer>(sp => new TemplateMatchingDigitRecognizer(
             sp.GetRequiredService<ITeamIdRecognizer>(),
             sp.GetRequiredService<IScoreRecognizer>()));
 
-        services.AddTransient<IPipelineFactory, PipelineFactory>();
-        services.AddTransient<IExcelExporter, ClosedXmlExcelExporter>();
+        services.AddSingleton<IPipelineFactory, PipelineFactory>();
+        services.AddSingleton<IExcelExporter, ClosedXmlExcelExporter>();
+        services.AddSingleton<IProcessingStateRepository, JsonProcessingStateRepository>();
 
         return services;
     }

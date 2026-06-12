@@ -26,31 +26,21 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
 
     protected IReadOnlyList<RecognizedDigit> RecognizeMultipleDigits(CroppedRegion region, CancellationToken ct)
     {
-        using var bitmap = Load(region);
-        using var prepared = PrepareForRecognition(bitmap);
+        var bitmap = Load(region);
+        var prepared = PrepareForRecognition(bitmap);
         var segments = SegmentDigits(prepared);
         var digits = new List<RecognizedDigit>();
 
-        try
+        foreach (var segment in segments)
         {
-            foreach (var segment in segments)
+            ct.ThrowIfCancellationRequested();
+            var recognized = RecognizeGlyph(segment, region.Region);
+            if (recognized is null)
             {
-                ct.ThrowIfCancellationRequested();
-                var recognized = RecognizeGlyph(segment, region.Region);
-                if (recognized is null)
-                {
-                    throw new InvalidOperationException("Digit segment could not be recognized.");
-                }
+                throw new InvalidOperationException("Digit segment could not be recognized.");
+            }
 
-                digits.Add(recognized);
-            }
-        }
-        finally
-        {
-            foreach (var segment in segments)
-            {
-                segment.Dispose();
-            }
+            digits.Add(recognized);
         }
 
         return digits;
@@ -60,14 +50,14 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
     {
         ct.ThrowIfCancellationRequested();
 
-        using var bitmap = Load(region);
-        using var prepared = PrepareForRecognition(bitmap);
+        var bitmap = Load(region);
+        var prepared = PrepareForRecognition(bitmap);
         return RecognizeGlyph(prepared, region.Region);
     }
 
     protected List<GrayImage> ExtractBoxContents(GrayImage source, int expectedRuns)
     {
-        using var prepared = PrepareForRecognition(source);
+        var prepared = PrepareForRecognition(source);
         var bestRuns = FindBestHorizontalRuns(prepared, expectedRuns);
         if (bestRuns.Count != expectedRuns)
         {
@@ -89,6 +79,20 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
             .ToList();
     }
 
+    /// <summary>
+    /// Pixel agreement alone is a poor certainty signal: a wrong template can
+    /// still agree on 85% of pixels of a degraded glyph. The margin to the
+    /// best *other* digit is what separates a confident read from a guess, so
+    /// the reported confidence is the agreement scaled by a certainty factor
+    /// that falls from 1 (margin at or above <see cref="FullCertaintyMargin"/>)
+    /// to <see cref="MinimumCertainty"/> (a dead tie). The floor keeps cleanly
+    /// scanned digits — whose margins shrink through JPEG encoding, cropping
+    /// and border removal — comfortably above the accept threshold, while a
+    /// near-tie still loses enough confidence to land in the review band.
+    /// </summary>
+    private const float FullCertaintyMargin = 0.02f;
+    private const float MinimumCertainty = 0.85f;
+
     protected RecognizedDigit? RecognizeGlyph(GrayImage source, FormRegion region)
     {
         var glyph = NormalizeGlyph(source);
@@ -98,27 +102,53 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
         }
 
         var bestDigit = -1;
-        var bestConfidence = 0f;
+        var bestAgreement = 0f;
+        var bestOtherDigitAgreement = 0f;
 
         foreach (var templateSet in _templates)
         {
             foreach (var template in templateSet.Value)
             {
-                var confidence = CalculateConfidence(glyph, template);
-                if (confidence > bestConfidence)
+                var agreement = CalculateConfidence(glyph, template);
+                if (agreement > bestAgreement)
                 {
-                    bestConfidence = confidence;
+                    if (templateSet.Key != bestDigit)
+                    {
+                        bestOtherDigitAgreement = bestAgreement;
+                    }
+
+                    bestAgreement = agreement;
                     bestDigit = templateSet.Key;
+                }
+                else if (templateSet.Key != bestDigit && agreement > bestOtherDigitAgreement)
+                {
+                    bestOtherDigitAgreement = agreement;
                 }
             }
         }
 
-        if (bestDigit < 0 || bestConfidence < options.TemplateMatchThreshold)
+        // The raw agreement decides whether a glyph was matched at all; the
+        // margin only lowers the *reported* confidence so an ambiguous read
+        // routes to human review instead of being dropped.
+        if (bestDigit < 0 || bestAgreement < options.TemplateMatchThreshold)
         {
             return null;
         }
 
-        return new RecognizedDigit(region, bestDigit, bestConfidence);
+        return new RecognizedDigit(region, bestDigit, ScaleByMargin(bestAgreement, bestOtherDigitAgreement));
+    }
+
+    /// <summary>
+    /// Applies the margin-aware certainty factor to a raw agreement score.
+    /// Shared by every template-matching path so no fallback can report a
+    /// near-tie at full confidence.
+    /// </summary>
+    protected static float ScaleByMargin(float bestAgreement, float bestOtherDigitAgreement)
+    {
+        var margin = bestAgreement - bestOtherDigitAgreement;
+        var certainty = MinimumCertainty +
+            ((1f - MinimumCertainty) * Math.Clamp(margin / FullCertaintyMargin, 0f, 1f));
+        return bestAgreement * certainty;
     }
 
     protected static NumberRecognitionResult Failure(
@@ -135,6 +165,19 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
         RemoveBorderLines(prepared);
         RemoveEdgeConnectedInk(prepared);
         return prepared;
+    }
+
+    /// <summary>Crops the image inward by the given percentage on every side (at least one pixel).</summary>
+    protected static GrayImage CropInset(GrayImage source, float insetPercent)
+    {
+        var insetX = Math.Max(1, (int)Math.Round(source.Width * insetPercent));
+        var insetY = Math.Max(1, (int)Math.Round(source.Height * insetPercent));
+        var left = Math.Clamp(insetX, 0, source.Width - 2);
+        var top = Math.Clamp(insetY, 0, source.Height - 2);
+        var right = Math.Clamp(source.Width - insetX, left + 1, source.Width);
+        var bottom = Math.Clamp(source.Height - insetY, top + 1, source.Height);
+        var bounds = Rectangle.FromLTRB(left, top, right, bottom);
+        return source.Crop(bounds);
     }
 
     private void RemoveBorderLines(GrayImage bitmap)
@@ -391,7 +434,7 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
 
     private static bool[,] BuildTemplate(int digit, SKTypeface typeface, DigitRecognitionOptions options)
     {
-        using var glyph = GlyphRenderer.RenderDigit(
+        var glyph = GlyphRenderer.RenderDigit(
             digit, options.TemplateWidth, options.TemplateHeight, options.TemplateHeight * 0.70f, typeface);
 
         return NormalizeGlyph(glyph, options)
@@ -408,8 +451,8 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
             return null;
         }
 
-        using var cropped = source.Crop(bounds.Value);
-        using var normalized = cropped.Resize(options.TemplateWidth, options.TemplateHeight);
+        var cropped = source.Crop(bounds.Value);
+        var normalized = cropped.Resize(options.TemplateWidth, options.TemplateHeight);
 
         var pixels = new bool[options.TemplateWidth, options.TemplateHeight];
         for (var x = 0; x < options.TemplateWidth; x++)

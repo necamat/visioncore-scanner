@@ -7,9 +7,13 @@ namespace VisionCore.Application.Configuration;
 ///
 /// Bind from appsettings.json section "PdfRegions".
 /// </summary>
-public sealed class PdfRegionOptions
+public sealed record PdfRegionOptions
 {
-    /// <summary>DPI used when rendering the PDF page to a bitmap.</summary>
+    /// <summary>
+    /// The DPI the pixel coordinates below were measured at. Informative for
+    /// the operator re-measuring a form — extraction itself works purely in
+    /// pixels and never consults this value.
+    /// </summary>
     public int Dpi { get; init; } = 200;
 
     /// <summary>TeamId container box (whole number area).</summary>
@@ -35,7 +39,7 @@ public sealed class PdfRegionOptions
 }
 
 /// <summary>Pixel rectangle for one form region on a rendered PDF page.</summary>
-public sealed class PdfRegionBounds
+public sealed record PdfRegionBounds
 {
     /// <summary>Left edge in pixels from the left of the rendered page.</summary>
     public int X { get; init; }

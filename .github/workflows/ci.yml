@@ -39,6 +39,12 @@ jobs:
       - name: Build
         run: dotnet build VisionCore.slnx --no-restore --configuration Release
 
+      # .gitattributes pins line endings, so the verdict is identical on every
+      # OS — one runner is enough.
+      - name: Verify formatting
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet format VisionCore.slnx --verify-no-changes --no-restore
+
       - name: Test
         run: dotnet test VisionCore.Tests/VisionCore.Tests.csproj --no-build --configuration Release --logger "console;verbosity=normal"
 

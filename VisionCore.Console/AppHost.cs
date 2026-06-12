@@ -3,6 +3,7 @@ namespace VisionCore.Console;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Serilog;
 using VisionCore.Application.Configuration;
 using VisionCore.Application.UseCases;
@@ -43,14 +44,19 @@ internal static class AppHost
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // The cross-field rules (threshold ordering, heuristic-confidence
+        // contract) live in the dedicated validator.
+        services.AddSingleton<IValidateOptions<ConfidenceEvaluationOptions>, ConfidenceEvaluationOptionsValidator>();
         services.AddOptions<ConfidenceEvaluationOptions>()
             .Bind(context.Configuration.GetSection("ConfidenceEvaluationOptions"))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // PdfRegionBounds is nested, which DataAnnotations validation does not
+        // reach — the dedicated validator checks the rectangles themselves.
+        services.AddSingleton<IValidateOptions<PdfRegionOptions>, PdfRegionOptionsValidator>();
         services.AddOptions<PdfRegionOptions>()
             .Bind(context.Configuration.GetSection("PdfRegions"))
-            .ValidateDataAnnotations()
             .ValidateOnStart();
 
         services.AddScanningInfrastructure();

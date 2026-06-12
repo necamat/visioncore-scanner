@@ -9,8 +9,16 @@ using var host = AppHost.Build(args);
 await host.StartAsync();
 try
 {
+    // ApplicationStopping fires on Ctrl+C (SIGINT) and SIGTERM, so a cancelled
+    // run unwinds through the pipeline's cooperative cancellation checks
+    // instead of being killed mid-write.
+    var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
     var orchestrator = host.Services.GetRequiredService<ConsoleOrchestrator>();
-    return await orchestrator.RunAsync(args, CancellationToken.None);
+    return await orchestrator.RunAsync(args, lifetime.ApplicationStopping);
+}
+catch (OperationCanceledException)
+{
+    return 130; // Conventional exit code for termination by Ctrl+C.
 }
 finally
 {
