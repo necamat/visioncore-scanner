@@ -36,6 +36,11 @@ public sealed class ClosedXmlExcelExporter(ILogger<ClosedXmlExcelExporter> logge
     /// <inheritdoc />
     public Task<Result> ExportAsync(QuizResult result, string outputPath, CancellationToken ct)
     {
+        // The workbook is written to a sibling temp file and moved over the
+        // target, so a crash mid-save can never leave a half-written file —
+        // --finalize rewrites a workbook holding the operator's review work.
+        var tempPath = outputPath + ".tmp";
+
         try
         {
             var scans = result.GetScans();
@@ -86,13 +91,33 @@ public sealed class ClosedXmlExcelExporter(ILogger<ClosedXmlExcelExporter> logge
             scansWorksheet.Columns().AdjustToContents();
             standingsWorksheet.Columns().AdjustToContents();
 
-            workbook.SaveAs(outputPath);
+            // SaveAs(string) infers the format from the extension, which a
+            // ".tmp" suffix would break — the stream overload always writes xlsx.
+            using (var stream = File.Create(tempPath))
+            {
+                workbook.SaveAs(stream);
+            }
+
+            File.Move(tempPath, outputPath, overwrite: true);
             return Task.FromResult(Result.Success());
         }
         catch (Exception ex)
         {
+            TryDeleteTempFile(tempPath);
             logger.LogError(ex, "Excel export failed for path: {OutputPath}", outputPath);
             return Task.FromResult(Result.Failure($"Excel export failed: {ex.Message}"));
+        }
+    }
+
+    private void TryDeleteTempFile(string tempPath)
+    {
+        try
+        {
+            File.Delete(tempPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Could not clean up temp export file {TempPath}", tempPath);
         }
     }
 }

@@ -30,4 +30,8 @@
     <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="VisionCore.Tests" />
+  </ItemGroup>
+
 </Project>

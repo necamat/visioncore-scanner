@@ -49,4 +49,63 @@ public sealed class ClosedXmlExcelExporterTests
             }
         }
     }
+
+    [Fact]
+    public async Task ExportAsync_Should_Overwrite_An_Existing_Workbook_Without_Leaving_A_Temp_File()
+    {
+        var sut = new ClosedXmlExcelExporter(NullLogger<ClosedXmlExcelExporter>.Instance);
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var outputPath = Path.Combine(root, "quiz.xlsx");
+
+        var first = new QuizResult();
+        first.AddScan(new SheetScanResult(1, "r1\\img1.pdf", 7, 12, 0.95, ReviewStatus.Accepted, null));
+        var second = new QuizResult();
+        second.AddScan(new SheetScanResult(1, "r1\\img1.pdf", 7, 99, 0.95, ReviewStatus.Accepted, null));
+
+        try
+        {
+            (await sut.ExportAsync(first, outputPath, CancellationToken.None)).IsSuccess.Should().BeTrue();
+            (await sut.ExportAsync(second, outputPath, CancellationToken.None)).IsSuccess.Should().BeTrue();
+
+            using var workbook = new XLWorkbook(outputPath);
+            workbook.Worksheet(ClosedXmlExcelExporter.ScansSheetName).Cell(2, 4).GetValue<int>().Should().Be(99);
+            Directory.GetFiles(root).Should().ContainSingle(
+                "the temp file of the atomic write must be gone after a successful export");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ExportAsync_Should_Fail_Cleanly_And_Clean_Up_When_The_Target_Cannot_Be_Replaced()
+    {
+        // The atomic write must never destroy what sits at the target path —
+        // a directory there makes the final move fail on every platform.
+        var sut = new ClosedXmlExcelExporter(NullLogger<ClosedXmlExcelExporter>.Instance);
+        var root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var outputPath = Path.Combine(root, "quiz.xlsx");
+        Directory.CreateDirectory(outputPath);
+
+        try
+        {
+            var export = await sut.ExportAsync(new QuizResult(), outputPath, CancellationToken.None);
+
+            export.IsFailure.Should().BeTrue();
+            export.Error.Should().Contain("Excel export failed");
+            Directory.Exists(outputPath).Should().BeTrue("the export must not clobber the target");
+            Directory.GetFiles(root).Should().BeEmpty("the temp file must be cleaned up after a failure");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+    }
 }

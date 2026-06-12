@@ -63,7 +63,7 @@ python generate_test_pdfs.py ./generated_input
 dotnet run --project ../../VisionCore.Console -- ./generated_input
 ```
 
-The console writes `output/rezultati.xlsx` with the recognized team ids and
+The console writes `output/QuizResult.xlsx` with the recognized team ids and
 scores. To change the sample values or coordinates, edit the `SAMPLES` and the
 box-rectangle constants near the top of `generate_test_pdfs.py` (keep them in
 sync with `appsettings.json` → `PdfRegions`).

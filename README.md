@@ -145,7 +145,7 @@ cd VisionCore.Console
 dotnet run -- ./input
 ```
 
-Output: `./output/rezultati.xlsx` (a `Scans` sheet and a `Standings` sheet).
+Output: `./output/QuizResult.xlsx` (a `Scans` sheet and a `Standings` sheet).
 The process exit code is `0` on success, non-zero on failure. Logs are written
 to the console and a daily rolling file under `./logs` (Serilog).
 
@@ -184,14 +184,16 @@ excluded from the standings until a human confirms them. The loop is:
 2. Re-import the reviewed workbook — the standings are regenerated in place:
 
 ```bash
-dotnet run -- --finalize ./output/rezultati.xlsx
+dotnet run -- --finalize ./output/QuizResult.xlsx
 # without a path it defaults to the configured output workbook
 ```
 
-The import is validated row by row (unknown status values, accepted rows
-without a score, non-numeric cells) and fails with the offending row's
-position without touching the workbook, so a typo in the review can never
-silently corrupt the standings.
+The import is validated row by row — unknown status values, accepted rows
+without a score, non-numeric or out-of-range cells (the form fits a two-digit
+team id and a three-digit score), and duplicated sheets all fail with the
+offending row's position without touching the workbook, so a typo in the
+review can never silently corrupt the standings. Deleting (or clearing) a row
+drops that sheet from the import.
 
 ---
 

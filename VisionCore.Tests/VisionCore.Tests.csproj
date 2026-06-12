@@ -11,6 +11,7 @@
     <ProjectReference Include="..\VisionCore.Domain\VisionCore.Domain.csproj" />
     <ProjectReference Include="..\VisionCore.Application\VisionCore.Application.csproj" />
     <ProjectReference Include="..\VisionCore.Infrastructure\VisionCore.Infrastructure.csproj" />
+    <ProjectReference Include="..\VisionCore.Console\VisionCore.Console.csproj" />
   </ItemGroup>
 
   <ItemGroup>
