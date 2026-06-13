@@ -64,6 +64,7 @@ __pycache__/
 *.tmp.png
 build-diag.txt
 generated_input/
+generated_handwritten/
 
 # Committed PDF fixtures live under TestData/PdfSamples/, but transient
 # generator artifacts there must not be tracked.

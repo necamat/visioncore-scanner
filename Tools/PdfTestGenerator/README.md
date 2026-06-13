@@ -67,3 +67,24 @@ The console writes `output/QuizResult.xlsx` with the recognized team ids and
 scores. To change the sample values or coordinates, edit the `SAMPLES` and the
 box-rectangle constants near the top of `generate_test_pdfs.py` (keep them in
 sync with `appsettings.json` → `PdfRegions`).
+
+## Handwritten-score sheets (ONNX engine)
+
+`generate_handwritten_pdfs.py` produces the same form but with a **handwritten
+score** — real MNIST digit samples (the ones committed under
+`VisionCore.Tests/TestData/Mnist/`) pasted into the three score cells, while the
+team id stays printed. It is the manual companion to the
+`OnnxHandwrittenScoreEndToEnd` test.
+
+```bash
+python generate_handwritten_pdfs.py ./generated_handwritten
+
+# read them with the ONNX score engine (template matching can't read handwriting)
+cd ../../VisionCore.Console
+DigitRecognitionOptions__ScoreEngine=Onnx dotnet run -- ../Tools/PdfTestGenerator/generated_handwritten
+```
+
+Each file is named `hw_team<NN>_score<NNN>.pdf` and the script prints the
+expected team/score plus which MNIST sample fed each digit. Edit the `SHEETS`
+list near the top to change the digits (each cell picks `<digit>_<sample>.png`,
+sample `0`–`2`).
