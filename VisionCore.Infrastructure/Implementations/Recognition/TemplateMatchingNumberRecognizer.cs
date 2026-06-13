@@ -159,13 +159,8 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
         return NumberRecognitionResult.FailureResult(failure, number, confidence);
     }
 
-    protected GrayImage PrepareForRecognition(GrayImage source)
-    {
-        var prepared = source.Clone();
-        RemoveBorderLines(prepared);
-        RemoveEdgeConnectedInk(prepared);
-        return prepared;
-    }
+    protected GrayImage PrepareForRecognition(GrayImage source) =>
+        GlyphIsolation.PrepareForRecognition(source, options.DarkPixelThreshold);
 
     /// <summary>Crops the image inward by the given percentage on every side (at least one pixel).</summary>
     protected static GrayImage CropInset(GrayImage source, float insetPercent)
@@ -178,122 +173,6 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
         var bottom = Math.Clamp(source.Height - insetY, top + 1, source.Height);
         var bounds = Rectangle.FromLTRB(left, top, right, bottom);
         return source.Crop(bounds);
-    }
-
-    private void RemoveBorderLines(GrayImage bitmap)
-    {
-        const float rowThreshold = 0.35f;
-        const float columnThreshold = 0.35f;
-        var rowsToClear = new List<int>();
-        var columnsToClear = new List<int>();
-        var edgeRowBand = Math.Max(2, (int)Math.Round(bitmap.Height * 0.20f));
-        var edgeColumnBand = Math.Max(2, (int)Math.Round(bitmap.Width * 0.20f));
-
-        for (var y = 0; y < bitmap.Height; y++)
-        {
-            var darkCount = 0;
-            for (var x = 0; x < bitmap.Width; x++)
-            {
-                if (IsDark(bitmap.GetIntensity(x, y)))
-                {
-                    darkCount++;
-                }
-            }
-
-            var isNearEdge = y < edgeRowBand || y >= bitmap.Height - edgeRowBand;
-            if (isNearEdge && (darkCount / (float)bitmap.Width) >= rowThreshold)
-            {
-                rowsToClear.Add(y);
-            }
-        }
-
-        for (var x = 0; x < bitmap.Width; x++)
-        {
-            var darkCount = 0;
-            for (var y = 0; y < bitmap.Height; y++)
-            {
-                if (IsDark(bitmap.GetIntensity(x, y)))
-                {
-                    darkCount++;
-                }
-            }
-
-            var isNearEdge = x < edgeColumnBand || x >= bitmap.Width - edgeColumnBand;
-            if (isNearEdge && (darkCount / (float)bitmap.Height) >= columnThreshold)
-            {
-                columnsToClear.Add(x);
-            }
-        }
-
-        foreach (var y in rowsToClear)
-        {
-            for (var x = 0; x < bitmap.Width; x++)
-            {
-                bitmap.SetWhite(x, y);
-            }
-        }
-
-        foreach (var x in columnsToClear)
-        {
-            for (var y = 0; y < bitmap.Height; y++)
-            {
-                bitmap.SetWhite(x, y);
-            }
-        }
-    }
-
-    private void RemoveEdgeConnectedInk(GrayImage bitmap)
-    {
-        var visited = new bool[bitmap.Width, bitmap.Height];
-        var edgePixels = new Queue<Point>();
-
-        for (var x = 0; x < bitmap.Width; x++)
-        {
-            EnqueueIfDark(bitmap, visited, edgePixels, x, 0);
-            EnqueueIfDark(bitmap, visited, edgePixels, x, bitmap.Height - 1);
-        }
-
-        for (var y = 0; y < bitmap.Height; y++)
-        {
-            EnqueueIfDark(bitmap, visited, edgePixels, 0, y);
-            EnqueueIfDark(bitmap, visited, edgePixels, bitmap.Width - 1, y);
-        }
-
-        while (edgePixels.Count > 0)
-        {
-            var current = edgePixels.Dequeue();
-            bitmap.SetWhite(current.X, current.Y);
-
-            EnqueueNeighbor(bitmap, visited, edgePixels, current.X - 1, current.Y);
-            EnqueueNeighbor(bitmap, visited, edgePixels, current.X + 1, current.Y);
-            EnqueueNeighbor(bitmap, visited, edgePixels, current.X, current.Y - 1);
-            EnqueueNeighbor(bitmap, visited, edgePixels, current.X, current.Y + 1);
-        }
-    }
-
-    private void EnqueueNeighbor(GrayImage bitmap, bool[,] visited, Queue<Point> queue, int x, int y)
-    {
-        if (x < 0 || x >= bitmap.Width || y < 0 || y >= bitmap.Height)
-        {
-            return;
-        }
-
-        EnqueueIfDark(bitmap, visited, queue, x, y);
-    }
-
-    private void EnqueueIfDark(GrayImage bitmap, bool[,] visited, Queue<Point> queue, int x, int y)
-    {
-        if (visited[x, y])
-        {
-            return;
-        }
-
-        visited[x, y] = true;
-
-        if (IsDark(bitmap.GetIntensity(x, y)))
-        {
-            queue.Enqueue(new Point(x, y));
-        }
     }
 
     private List<Rectangle> FindBestHorizontalRuns(GrayImage source, int expectedRuns)
@@ -468,39 +347,8 @@ public abstract class TemplateMatchingNumberRecognizer(DigitRecognitionOptions o
 
     protected Rectangle? ExtractInkBounds(GrayImage source) => ExtractInkBounds(source, Options);
 
-    private static Rectangle? ExtractInkBounds(GrayImage source, DigitRecognitionOptions options)
-    {
-        var minX = source.Width;
-        var minY = source.Height;
-        var maxX = -1;
-        var maxY = -1;
-        var darkPixels = 0;
-
-        for (var y = 0; y < source.Height; y++)
-        {
-            for (var x = 0; x < source.Width; x++)
-            {
-                if (!IsDark(source.GetIntensity(x, y), options))
-                {
-                    continue;
-                }
-
-                darkPixels++;
-                minX = Math.Min(minX, x);
-                minY = Math.Min(minY, y);
-                maxX = Math.Max(maxX, x);
-                maxY = Math.Max(maxY, y);
-            }
-        }
-
-        var inkRatio = (float)darkPixels / (source.Width * source.Height);
-        if (maxX < minX || maxY < minY || inkRatio < options.MinimumInkRatio)
-        {
-            return null;
-        }
-
-        return Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
-    }
+    private static Rectangle? ExtractInkBounds(GrayImage source, DigitRecognitionOptions options) =>
+        GlyphIsolation.ExtractInkBounds(source, options.DarkPixelThreshold, options.MinimumInkRatio);
 
     private static float CalculateConfidence(bool[,] glyph, bool[,] template)
     {

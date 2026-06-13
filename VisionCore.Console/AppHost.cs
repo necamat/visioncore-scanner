@@ -19,8 +19,17 @@ internal static class AppHost
         Host.CreateDefaultBuilder(args)
             .ConfigureAppConfiguration((_, config) =>
             {
+                // Read appsettings.json relative to the working directory so a
+                // published binary picks up the config next to where it is run.
+                // Re-apply environment variables and command-line args *after*
+                // the file, otherwise this re-added JSON source would shadow the
+                // ones CreateDefaultBuilder registered and standard overrides
+                // (e.g. DigitRecognitionOptions__ScoreEngine=Onnx) would be
+                // silently ignored.
                 config.SetBasePath(Directory.GetCurrentDirectory());
                 config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                config.AddEnvironmentVariables();
+                config.AddCommandLine(args);
             })
             .UseSerilog((context, loggerConfiguration) =>
                 loggerConfiguration.ReadFrom.Configuration(context.Configuration))
