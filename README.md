@@ -188,12 +188,19 @@ dotnet run -- --finalize ./output/QuizResult.xlsx
 # without a path it defaults to the configured output workbook
 ```
 
-The import is validated row by row — unknown status values, accepted rows
-without a score, non-numeric or out-of-range cells (the form fits a two-digit
-team id and a three-digit score), and duplicated sheets all fail with the
-offending row's position without touching the workbook, so a typo in the
+The import is validated before anything is written back. The header row must
+match the layout VisionCore exports, so a foreign or hand-reordered workbook is
+rejected rather than misread. Each data row is then checked — unknown status
+values, accepted rows missing a team id or score, non-numeric, fractional or
+out-of-range cells (the form fits a two-digit team id and a three-digit score),
+and sheets listed twice — and the first problem fails the import with the
+offending row's position, without touching the workbook, so a typo in the
 review can never silently corrupt the standings. Deleting (or clearing) a row
 drops that sheet from the import.
+
+The **Confidence** column records what the recognizer reported at scan time and
+is kept as a record; it is not recomputed when you correct a row, so a finalized
+sheet still shows the confidence that originally sent it to review.
 
 ---
 

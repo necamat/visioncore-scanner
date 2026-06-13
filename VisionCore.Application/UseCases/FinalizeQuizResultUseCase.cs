@@ -26,7 +26,8 @@ public sealed class FinalizeQuizResultUseCase(
             return Result.Failure(reviewed.Error!);
         }
 
-        var export = await excelExporter.ExportAsync(reviewed.Value!, workbookPath, ct);
+        var reviewedResult = reviewed.Value!;
+        var export = await excelExporter.ExportAsync(reviewedResult, workbookPath, ct);
         if (export.IsFailure)
         {
             logger.LogError("Re-export failed: {Error}", export.Error);
@@ -34,9 +35,9 @@ public sealed class FinalizeQuizResultUseCase(
         }
 
         logger.LogInformation(
-            "Finalized {Scans} scans into {Standings} standings",
-            reviewed.Value!.GetScans().Count,
-            reviewed.Value!.GetStandings().Count);
+            "Finalized {Scans} reviewed scans into {Workbook}",
+            reviewedResult.GetScans().Count,
+            workbookPath);
         return Result.Success();
     }
 }

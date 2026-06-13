@@ -247,6 +247,45 @@ public sealed class ClosedXmlReviewedScansReaderTests : IDisposable
         read.Value!.GetScans().Single().SourcePath.Should().Be("R2/b.pdf");
     }
 
+    [Fact]
+    public async Task ReadAsync_Should_Fail_When_An_Accepted_Row_Lacks_A_Team_Id()
+    {
+        await ExportSingleAcceptedScan();
+        MutateCell(row: 2, column: 3, value: "");
+
+        var read = await sut.ReadAsync(workbookPath, CancellationToken.None);
+
+        read.IsFailure.Should().BeTrue();
+        read.Error.Should().Contain("Row 2").And.Contain("Accepted");
+    }
+
+    [Fact]
+    public async Task ReadAsync_Should_Fail_When_A_Failure_Code_Is_Not_Recognized()
+    {
+        await ExportSingleAcceptedScan();
+        MutateCell(row: 2, column: 7, value: "KaboomError");
+
+        var read = await sut.ReadAsync(workbookPath, CancellationToken.None);
+
+        read.IsFailure.Should().BeTrue();
+        read.Error.Should().Contain("Row 2").And.Contain("KaboomError");
+    }
+
+    [Fact]
+    public async Task ReadAsync_Should_Reject_A_Workbook_Whose_Header_Does_Not_Match_The_Layout()
+    {
+        // A workbook not produced by VisionCore — or one whose columns the
+        // operator reordered — must be rejected before any column position is
+        // trusted, rather than silently read against the wrong columns.
+        await ExportSingleAcceptedScan();
+        MutateCell(row: 1, column: 3, value: "Player ID");
+
+        var read = await sut.ReadAsync(workbookPath, CancellationToken.None);
+
+        read.IsFailure.Should().BeTrue();
+        read.Error.Should().Contain("column 3").And.Contain("Team ID");
+    }
+
     private async Task ExportSingleAcceptedScan()
     {
         var original = new QuizResult();

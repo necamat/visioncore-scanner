@@ -13,23 +13,20 @@ using VisionCore.Domain.Models;
 /// </summary>
 public sealed class ClosedXmlExcelExporter(ILogger<ClosedXmlExcelExporter> logger) : IExcelExporter
 {
-    /// <summary>Name of the worksheet listing one row per processed sheet.</summary>
-    public const string ScansSheetName = "Scans";
+    /// <summary>
+    /// Name of the worksheet listing one row per processed sheet. The layout of
+    /// this sheet is defined in <see cref="ScansSheetSchema"/> and shared with
+    /// the reader that imports it back.
+    /// </summary>
+    public const string ScansSheetName = ScansSheetSchema.SheetName;
 
     /// <summary>Name of the worksheet listing accumulated score per team.</summary>
     public const string StandingsSheetName = "Standings";
 
-    private const int HeaderRow = 1;
-    private const int FirstDataRow = 2;
-
-    private const int ColumnRound = 1;
-    private const int ColumnSource = 2;
-    private const int ColumnTeamId = 3;
-    private const int ColumnScore = 4;
-    private const int ColumnConfidence = 5;
-    private const int ColumnStatus = 6;
-    private const int ColumnFailure = 7;
-
+    // The Standings sheet is written here and never read back, so its layout
+    // stays local rather than in the shared schema.
+    private const int StandingsHeaderRow = 1;
+    private const int StandingsFirstDataRow = 2;
     private const int StandingsColumnTeam = 1;
     private const int StandingsColumnTotal = 2;
 
@@ -53,34 +50,34 @@ public sealed class ClosedXmlExcelExporter(ILogger<ClosedXmlExcelExporter> logge
             }
 
             using var workbook = new XLWorkbook();
-            var scansWorksheet = workbook.Worksheets.Add(ScansSheetName);
+            var scansWorksheet = workbook.Worksheets.Add(ScansSheetSchema.SheetName);
             var standingsWorksheet = workbook.Worksheets.Add(StandingsSheetName);
 
-            scansWorksheet.Cell(HeaderRow, ColumnRound).Value = "Round";
-            scansWorksheet.Cell(HeaderRow, ColumnSource).Value = "Source Path";
-            scansWorksheet.Cell(HeaderRow, ColumnTeamId).Value = "Team ID";
-            scansWorksheet.Cell(HeaderRow, ColumnScore).Value = "Score";
-            scansWorksheet.Cell(HeaderRow, ColumnConfidence).Value = "Confidence";
-            scansWorksheet.Cell(HeaderRow, ColumnStatus).Value = "Status";
-            scansWorksheet.Cell(HeaderRow, ColumnFailure).Value = "Failure";
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnRound).Value = ScansSheetSchema.HeaderRound;
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnSource).Value = ScansSheetSchema.HeaderSource;
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnTeamId).Value = ScansSheetSchema.HeaderTeamId;
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnScore).Value = ScansSheetSchema.HeaderScore;
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnConfidence).Value = ScansSheetSchema.HeaderConfidence;
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnStatus).Value = ScansSheetSchema.HeaderStatus;
+            scansWorksheet.Cell(ScansSheetSchema.HeaderRow, ScansSheetSchema.ColumnFailure).Value = ScansSheetSchema.HeaderFailure;
 
-            var scanRow = FirstDataRow;
+            var scanRow = ScansSheetSchema.FirstDataRow;
             foreach (var scan in scans)
             {
-                scansWorksheet.Cell(scanRow, ColumnRound).Value = scan.Round;
-                scansWorksheet.Cell(scanRow, ColumnSource).Value = scan.SourcePath;
-                scansWorksheet.Cell(scanRow, ColumnTeamId).Value = scan.TeamId;
-                scansWorksheet.Cell(scanRow, ColumnScore).Value = scan.Score;
-                scansWorksheet.Cell(scanRow, ColumnConfidence).Value = scan.Confidence;
-                scansWorksheet.Cell(scanRow, ColumnStatus).Value = scan.Status.ToString();
-                scansWorksheet.Cell(scanRow, ColumnFailure).Value = scan.FailureCode?.ToString();
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnRound).Value = scan.Round;
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnSource).Value = scan.SourcePath;
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnTeamId).Value = scan.TeamId;
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnScore).Value = scan.Score;
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnConfidence).Value = scan.Confidence;
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnStatus).Value = scan.Status.ToString();
+                scansWorksheet.Cell(scanRow, ScansSheetSchema.ColumnFailure).Value = scan.FailureCode?.ToString();
                 scanRow++;
             }
 
-            standingsWorksheet.Cell(HeaderRow, StandingsColumnTeam).Value = "Team";
-            standingsWorksheet.Cell(HeaderRow, StandingsColumnTotal).Value = "Total Score";
+            standingsWorksheet.Cell(StandingsHeaderRow, StandingsColumnTeam).Value = "Team";
+            standingsWorksheet.Cell(StandingsHeaderRow, StandingsColumnTotal).Value = "Total Score";
 
-            var row = FirstDataRow;
+            var row = StandingsFirstDataRow;
             foreach (var standing in standings)
             {
                 standingsWorksheet.Cell(row, StandingsColumnTeam).Value = standing.TeamId;
