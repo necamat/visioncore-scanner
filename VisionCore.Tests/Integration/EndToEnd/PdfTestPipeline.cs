@@ -33,10 +33,29 @@ internal static class PdfTestPipeline
         MinimumReviewConfidence = 0.40f
     };
 
+    // Same recognition options, but the score is read by the ONNX engine. The
+    // model is copied next to the test binary (see VisionCore.Tests.csproj).
+    private static readonly DigitRecognitionOptions OnnxScoreOptions =
+        DigitOptions with { ScoreEngine = ScoreRecognitionEngine.Onnx, OnnxModelPath = "Models/mnist-12.onnx" };
+
     public static PipelineFactory CreateFactory(PdfRegionOptions regions) =>
         new(
             new PdfRegionExtractor(Options.Create(regions)),
             new TemplateMatchingDigitRecognizer(Options.Create(DigitOptions)),
+            Options.Create(ConfidenceOptions),
+            NullLoggerFactory.Instance);
+
+    /// <summary>
+    /// A factory whose score digits are read by the ONNX MNIST engine (the team
+    /// id keeps template matching), wired exactly as <c>ScoreEngine=Onnx</c>
+    /// resolves it in production.
+    /// </summary>
+    public static PipelineFactory CreateOnnxFactory(PdfRegionOptions regions) =>
+        new(
+            new PdfRegionExtractor(Options.Create(regions)),
+            new TemplateMatchingDigitRecognizer(
+                new TemplateMatchingTeamIdRecognizer(DigitOptions),
+                new OnnxScoreRecognizer(OnnxScoreOptions)),
             Options.Create(ConfidenceOptions),
             NullLoggerFactory.Instance);
 

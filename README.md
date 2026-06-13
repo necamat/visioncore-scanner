@@ -157,8 +157,11 @@ keep working without code changes. (Those thresholds were calibrated for the
 template engine; for production handwriting you would re-check them against a
 real sample.) The committed model (`mnist-12.onnx`, 26 KB, from the
 [ONNX Model Zoo](https://github.com/onnx/models), Apache-2.0) runs fully
-offline; tests verify it against thirty genuine handwritten MNIST samples
-committed under `TestData/Mnist`.
+offline; it is verified both at the unit level (against thirty genuine
+handwritten MNIST samples committed under `TestData/Mnist`) and **end-to-end** —
+real MNIST digits pasted into the form and driven through the production PDF
+pipeline, including confusable digits, with the same guarantee the template
+engine carries: an auto-accepted score is never silently wrong.
 
 ### PDF pipeline
 

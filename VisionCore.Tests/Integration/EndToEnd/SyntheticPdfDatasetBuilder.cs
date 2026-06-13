@@ -90,9 +90,34 @@ public sealed class SyntheticPdfDatasetBuilder
         CreateSheetPdf(pdfPath, teamId, score, distortion ?? SheetDistortion.None);
     }
 
-    private static void CreateSheetPdf(string pdfPath, int teamId, int? score, SheetDistortion distortion)
+    /// <summary>
+    /// Renders a sheet whose three score cells carry real handwritten digit
+    /// images (e.g. MNIST samples) instead of printed glyphs; the team id stays
+    /// printed. Each entry of <paramref name="scoreDigitPngs"/> is a PNG in MNIST
+    /// polarity (light ink on a dark ground) — it is inverted to the form's
+    /// dark-on-white and pasted, centered, into its cell. Drives the ONNX score
+    /// engine end-to-end the way a scanned handwritten score would.
+    /// </summary>
+    public void BuildSheetWithHandwrittenScore(string pdfPath, int teamId, IReadOnlyList<byte[]> scoreDigitPngs)
     {
-        var jpegBytes = RenderPageJpeg(teamId, score, distortion);
+        ArgumentNullException.ThrowIfNull(scoreDigitPngs);
+        if (scoreDigitPngs.Count != 3)
+        {
+            throw new ArgumentException("The score has exactly three digit cells.", nameof(scoreDigitPngs));
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(pdfPath)!);
+        CreateSheetPdf(pdfPath, teamId, score: null, SheetDistortion.None, scoreDigitPngs);
+    }
+
+    private static void CreateSheetPdf(
+        string pdfPath,
+        int teamId,
+        int? score,
+        SheetDistortion distortion,
+        IReadOnlyList<byte[]>? handwrittenScore = null)
+    {
+        var jpegBytes = RenderPageJpeg(teamId, score, distortion, handwrittenScore);
 
         var builder = new PdfDocumentBuilder();
         var page = builder.AddPage(PageSize.A4);
@@ -101,7 +126,8 @@ public sealed class SyntheticPdfDatasetBuilder
         File.WriteAllBytes(pdfPath, builder.Build());
     }
 
-    private static byte[] RenderPageJpeg(int teamId, int? score, SheetDistortion distortion)
+    private static byte[] RenderPageJpeg(
+        int teamId, int? score, SheetDistortion distortion, IReadOnlyList<byte[]>? handwrittenScore = null)
     {
         var info = new SKImageInfo(PageWidth, PageHeight);
         using var surface = SKSurface.Create(info);
@@ -123,7 +149,13 @@ public sealed class SyntheticPdfDatasetBuilder
         DrawDigit(canvas, ink, teamText[0].ToString(), TeamIdDigit1Box, distortion);
         DrawDigit(canvas, ink, teamText[1].ToString(), TeamIdDigit2Box, distortion);
 
-        if (score is not null)
+        if (handwrittenScore is not null)
+        {
+            DrawHandwrittenDigit(canvas, handwrittenScore[0], ScoreDigit1Box);
+            DrawHandwrittenDigit(canvas, handwrittenScore[1], ScoreDigit2Box);
+            DrawHandwrittenDigit(canvas, handwrittenScore[2], ScoreDigit3Box);
+        }
+        else if (score is not null)
         {
             var scoreText = score.Value.ToString("000");
             DrawDigit(canvas, ink, scoreText[0].ToString(), ScoreDigit1Box, distortion);
@@ -223,6 +255,36 @@ public sealed class SyntheticPdfDatasetBuilder
         var x = box.Left + ((box.Width - textWidth) / 2f) + distortion.DigitOffsetX;
         var y = box.Top + (box.Height / 2f) - bounds.MidY + distortion.DigitOffsetY;
         canvas.DrawText(digit, x, y, SKTextAlign.Left, font, ink);
+    }
+
+    /// <summary>
+    /// Pastes a handwritten digit image into a score cell: the MNIST sample is
+    /// inverted to the form's dark-on-white polarity and scaled to ~60% of the
+    /// cell, centered, so it stays clear of the printed box border (which glyph
+    /// isolation strips before recognition).
+    /// </summary>
+    private static void DrawHandwrittenDigit(SKCanvas canvas, byte[] mnistPng, Rectangle box)
+    {
+        using var decoded = SKBitmap.Decode(mnistPng);
+        using var inverted = new SKBitmap(decoded.Width, decoded.Height);
+        for (var y = 0; y < decoded.Height; y++)
+        {
+            for (var x = 0; x < decoded.Width; x++)
+            {
+                // MNIST PNGs are grayscale (light ink on a dark ground); invert
+                // to the form's dark-on-white.
+                var value = (byte)(255 - decoded.GetPixel(x, y).Red);
+                inverted.SetPixel(x, y, new SKColor(value, value, value));
+            }
+        }
+
+        var target = (int)Math.Round(Math.Min(box.Width, box.Height) * 0.62f);
+        var left = box.Left + ((box.Width - target) / 2);
+        var top = box.Top + ((box.Height - target) / 2);
+        var destination = new SKRect(left, top, left + target, top + target);
+
+        using var image = SKImage.FromBitmap(inverted);
+        canvas.DrawImage(image, destination, new SKSamplingOptions(SKFilterMode.Linear));
     }
 
     private static PdfRegionBounds ToBounds(Rectangle r) =>
