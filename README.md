@@ -145,7 +145,7 @@ cd VisionCore.Console
 dotnet run -- ./input
 ```
 
-Output: `./output/rezultati.xlsx` (a `Scans` sheet and a `Standings` sheet).
+Output: `./output/QuizResult.xlsx` (a `Scans` sheet and a `Standings` sheet).
 The process exit code is `0` on success, non-zero on failure. Logs are written
 to the console and a daily rolling file under `./logs` (Serilog).
 
@@ -172,6 +172,35 @@ the weakest clean template read for your scan stack. To re-calibrate against
 real scans, run a representative batch and inspect the per-digit values in the
 log (`TeamIdDigitConfidenceTrace` / `ScoreDigitConfidenceTrace`), then set
 `ConfidenceEvaluationOptions` accordingly.
+
+### Review workflow
+
+Scans the recognizer is not confident about are exported as `NeedsReview` and
+excluded from the standings until a human confirms them. The loop is:
+
+1. Open the exported workbook, check the flagged rows on the `Scans` sheet,
+   correct **Team ID** / **Score** where needed and set **Status** to
+   `Accepted` (or `Rejected`).
+2. Re-import the reviewed workbook — the standings are regenerated in place:
+
+```bash
+dotnet run -- --finalize ./output/QuizResult.xlsx
+# without a path it defaults to the configured output workbook
+```
+
+The import is validated before anything is written back. The header row must
+match the layout VisionCore exports, so a foreign or hand-reordered workbook is
+rejected rather than misread. Each data row is then checked — unknown status
+values, accepted rows missing a team id or score, non-numeric, fractional or
+out-of-range cells (the form fits a two-digit team id and a three-digit score),
+and sheets listed twice — and the first problem fails the import with the
+offending row's position, without touching the workbook, so a typo in the
+review can never silently corrupt the standings. Deleting (or clearing) a row
+drops that sheet from the import.
+
+The **Confidence** column records what the recognizer reported at scan time and
+is kept as a record; it is not recomputed when you correct a row, so a finalized
+sheet still shows the confidence that originally sent it to review.
 
 ---
 

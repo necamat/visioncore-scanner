@@ -61,6 +61,7 @@ internal static class AppHost
 
         services.AddScanningInfrastructure();
         services.AddTransient<ScanQuizSheetsUseCase>();
+        services.AddTransient<FinalizeQuizResultUseCase>();
         services.AddTransient<ConsoleOrchestrator>();
     }
 }
