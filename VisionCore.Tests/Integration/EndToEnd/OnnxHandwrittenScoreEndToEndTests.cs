@@ -58,4 +58,55 @@ public sealed class OnnxHandwrittenScoreEndToEndTests
             Directory.Delete(root, true);
         }
     }
+
+    [Theory]
+    [InlineData("0_0 0_1 0_2", 0)]    // all zeros
+    [InlineData("9_0 9_1 9_2", 999)]  // all nines
+    [InlineData("1_0 7_0 1_1", 171)]  // 1 vs 7
+    [InlineData("6_0 9_0 6_1", 696)]  // 6 vs 9
+    [InlineData("3_0 8_0 3_1", 383)]  // 3 vs 8
+    [InlineData("5_0 6_0 5_1", 565)]  // 5 vs 6
+    [InlineData("2_0 7_1 2_1", 272)]  // 2 vs 7
+    [InlineData("4_0 9_2 4_1", 494)]  // 4 vs 9
+    public async Task Pipeline_Should_Never_Silently_Misread_A_Hard_Handwritten_Score(
+        string scoreSamples, int expectedScore)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "vc-onnx-hard-e2e", Guid.NewGuid().ToString("N"));
+        var pdfPath = Path.Combine(root, "R1", "sheet.pdf");
+        var regions = SyntheticPdfDatasetBuilder.DefaultRegions();
+
+        var scorePngs = scoreSamples
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(name => File.ReadAllBytes(Path.Combine("TestData", "Mnist", $"{name}.png")))
+            .ToArray();
+        new SyntheticPdfDatasetBuilder().BuildSheetWithHandwrittenScore(pdfPath, teamId: 12, scorePngs);
+
+        var pipeline = PdfTestPipeline.CreateOnnxFactory(regions).CreateForSource(pdfPath);
+
+        try
+        {
+            var result = await pipeline.ProcessAsync(pdfPath, CancellationToken.None);
+
+            // Same guarantee as the template hard suite: an ambiguous handwritten
+            // digit may route to review or be rejected, but an auto-accepted score
+            // must never be wrong — accepted results feed the standings unseen.
+            if (result.IsSuccess)
+            {
+                result.ReviewStatus.Should().NotBeNull("a successful run must carry a review decision");
+                if (result.ReviewStatus == ReviewStatus.Accepted)
+                {
+                    result.Score.Should().Be(expectedScore, "an auto-accepted handwritten score must be correct");
+                }
+            }
+            else
+            {
+                (result.Error ?? result.FailureCode?.ToString())
+                    .Should().NotBeNullOrEmpty("a failed run must say why it failed");
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }
