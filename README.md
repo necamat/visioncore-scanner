@@ -16,6 +16,37 @@ touching the orchestration, recognition or export code.
 
 ---
 
+## What this demonstrates
+
+A compact but production-shaped .NET system, built to show engineering judgment
+rather than feature count:
+
+- **Clean Architecture, enforced.** Four layers
+  (`Domain ← Application ← Infrastructure ← Console`) with the dependency rule
+  checked at build time by NetArchTest — a stray reference fails the suite.
+- **Everything pluggable behind ports.** Region extraction, recognition, export,
+  state persistence and review-import each sit behind an interface. The score
+  recognizer ships with **two interchangeable engines** — deterministic template
+  matching and an **ONNX MNIST CNN** — chosen by configuration; the swap touches
+  no pipeline, evaluation or export code.
+- **Honest confidence, not guesses.** Recognition gates on the *weakest* digit
+  with a margin-aware certainty; anything uncertain surfaces as `NeedsReview`
+  instead of being auto-accepted, feeding a human-review loop (correct in Excel →
+  re-import → standings regenerate) that validates every row and never touches
+  the workbook on a bad import.
+- **Tested seriously — 220 tests.** Confusable digit pairs and seeded scan
+  degradations driven end-to-end through the production pipeline, real
+  handwritten MNIST samples for the ONNX path, plus options/DI/architecture
+  guards. CI builds and tests on **Linux, Windows and macOS** behind a
+  formatting gate.
+
+New to the code? Skim [Architecture](#architecture) and
+[Design patterns](#design-patterns) for the structure, then
+[Digit recognition — scope and limits](#digit-recognition--scope-and-limits)
+for the trade-offs called out honestly.
+
+---
+
 ## Repository layout
 
 A single repository holds the application and its supporting tooling, kept in
