@@ -34,11 +34,11 @@ rather than feature count:
   instead of being auto-accepted, feeding a human-review loop (correct in Excel →
   re-import → standings regenerate) that validates every row and never touches
   the workbook on a bad import.
-- **Tested seriously — 220 tests.** Confusable digit pairs and seeded scan
+- **Tested seriously — 230+ tests.** Confusable digit pairs and seeded scan
   degradations driven end-to-end through the production pipeline, real
-  handwritten MNIST samples for the ONNX path, plus options/DI/architecture
-  guards. CI builds and tests on **Linux, Windows and macOS** behind a
-  formatting gate.
+  handwritten MNIST samples (unit and end-to-end) for the ONNX path, plus
+  options/DI/architecture guards. CI builds and tests on **Linux, Windows and
+  macOS** behind a formatting gate.
 
 New to the code? Skim [Architecture](#architecture) and
 [Design patterns](#design-patterns) for the structure, then
